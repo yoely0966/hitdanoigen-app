@@ -64,6 +64,8 @@ const errText = (e) => (e && e.message === 'offline'
   : 'עפעס איז נישט געגאנגען. פרוביר נאכאמאל.');
 
 const pad = (n) => String(n).padStart(2, '0');
+/** 12-hour clock: 9:25 PM */
+const fmt12 = (d) => `${d.getHours() % 12 || 12}:${pad(d.getMinutes())} ${d.getHours() < 12 ? 'AM' : 'PM'}`;
 const fmtGreg = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 function fmtHeb(d) {
   try { return new Intl.DateTimeFormat('he-u-ca-hebrew', { day: 'numeric', month: 'long', year: 'numeric' }).format(d); }
@@ -306,14 +308,21 @@ function renderHome() {
 
   view().innerHTML = `
     ${state.update?.available ? `<button class="banner" id="updBanner" style="width:100%">${icon('download')} <span class="grow">א נייע ווערזשן (${esc(state.update.latest)}) איז גרייט</span>${icon('chev')}</button>` : ''}
+    <header class="home-top">
+      <div class="grow">
+        <div class="ht-hello">${greeting()},</div>
+        <div class="ht-name">${esc(name)}</div>
+      </div>
+      <button class="me-ring" id="meBadge" aria-label="מיין פראפיל" style="--p:${Math.round(goal.pct * 100)}">
+        <span><b class="num">${days}</b><i>${lvl ? esc(LEVELS[lvl - 1].n) : 'טעג'}</i></span>
+      </button>
+    </header>
     <section class="hero">
-      <button class="me-badge" id="meBadge" aria-label="מיין פראפיל"><b>${days}</b></button>
-      <div class="hello">${greeting()}, ${esc(name)}</div>
-      ${start ? `<div class="since">דו האסט אנגעהויבן דיין רייזע ${esc(fmtHeb(start))} – ${esc(fmtGreg(start))}</div>` : ''}
       <div class="big">
         <div class="days num" id="cDays">${days}</div>
         <div class="days-label">${days === 1 ? 'טאג ריין' : 'טעג ריין'}</div>
         <div class="clock num"><div><b id="cH">00</b><span>שעות</span></div><div><b id="cM">00</b><span>מינוט</span></div><div><b id="cS">00</b><span>סעקונדעס</span></div></div>
+        ${start ? `<div class="since">🗓️ זינט ${esc(fmtHeb(start))} · <span class="ltr">${esc(fmtGreg(start))}</span></div>` : ''}
       </div>
       <div class="level">
         ${lvl ? `<img src="${awardImg(lvl)}" alt="" onerror="this.style.visibility='hidden'">` : ''}
@@ -327,7 +336,7 @@ function renderHome() {
 
     <section class="card checkin">
       <h3>${days >= 90 ? 'וואנט פון כבוד' : '90-טעג טשארט'}</h3>
-      ${done ? `<div class="done-chip">${icon('check')} אפדעיטעד היינט${upd ? ' ' + pad(upd.getHours()) + ':' + pad(upd.getMinutes()) : ''}</div>`
+      ${done ? `<div class="done-chip">${icon('check')} אפדעיטעד היינט${upd ? ' <span class="ltr">' + fmt12(upd) + '</span>' : ''}</div>`
         : '<p>ביסטו נאך אלץ ריין? אפדעיט דיין טשארט פאר היינט.</p>'}
       <div class="btns">
         <button class="btn ${done ? 'ghost' : ''}" id="bClean">${icon('check')} איך בין נאך אלץ ריין</button>

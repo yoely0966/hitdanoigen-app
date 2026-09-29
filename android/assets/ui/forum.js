@@ -80,7 +80,7 @@ function shortWhen(w) {
 function isoWhen(iso, full) {
   if (!iso) return '';
   const d = new Date(iso), now = new Date();
-  const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const hm = fmt12(d);
   if (d.toDateString() === now.toDateString()) return hm;
   const y = new Date(now); y.setDate(y.getDate() - 1);
   if (d.toDateString() === y.toDateString()) return full ? 'נעכטן ' + hm : 'נעכטן';
@@ -731,7 +731,7 @@ function drawChat(cv, scrollBottom) {
       <div class="bub">
         ${rt ? `<blockquote><b>${rt.authorId === forum.me ? 'דו' : esc(o.username || '')}</b><br>${esc((rt.body || '').slice(0, 160))}</blockquote>` : ''}
         <div class="txt">${gone ? '<i class="muted">🚫 די מעסעדזש איז אויסגעמעקט געווארן</i>' : m.type === 'Voice' ? '🎤 <i>קול-מעסעדזש – הער אויפ\'ן וועבזייטל</i>' : linkify(m.body || '')}</div>
-        <div class="meta"><span>${esc(isoWhen(m.createdAt).includes('/') ? '' : '')}${pad(new Date(m.createdAt).getHours())}:${pad(new Date(m.createdAt).getMinutes())}</span>${mine ? `<span class="ticks${m.isViewed ? ' seen' : ''}">✓✓</span>` : ''}</div>
+        <div class="meta"><span>${fmt12(new Date(m.createdAt))}</span>${mine ? `<span class="ticks${m.isViewed ? ' seen' : ''}">✓✓</span>` : ''}</div>
         ${m.reaction ? `<span class="react">${reactionEmoji(m.reaction)}</span>` : ''}
       </div></div>`;
   });

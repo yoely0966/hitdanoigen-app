@@ -261,3 +261,15 @@ body.wa #fsec { padding-bottom: 250px; }
 .cp-ic { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: #fff; font-size: 17px; flex: none; }
 .cp-ok { color: var(--wa-green); font-weight: 800; visibility: hidden; }
 .cat-pick button.on .cp-ok { visibility: visible; }
+
+/* ---------- WhatsApp sides: my messages on the right, others on the left ---------- */
+.wa-msgs .msg { direction: ltr; }
+.wa-msgs .msg.out { flex-direction: row-reverse; }
+.wa-msgs .msg.in { flex-direction: row; }
+.wa-msgs .msg .bub { direction: rtl; }
+.wa-msgs .msg.in:not(.cont) .bub { border-top-right-radius: 8px; border-top-left-radius: 0; }
+.wa-msgs .msg.out:not(.cont) .bub { border-top-left-radius: 8px; border-top-right-radius: 0; }
+.wa-msgs .msg.in:not(.cont) .bub::before { right: auto; left: -8px; border-right: 0; border-left: 8px solid transparent; border-top-color: var(--wa-in); }
+.wa-msgs .msg.out:not(.cont) .bub::before { left: auto; right: -8px; border-left: 0; border-right: 8px solid transparent; border-top-color: var(--wa-out); }
+.wa-msgs .msg.in .bub .react { right: auto; left: 8px; }
+.wa-msgs .msg.out .bub .react { left: auto; right: 8px; }

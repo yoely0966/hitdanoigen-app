@@ -260,29 +260,58 @@ public class ReaderActivity extends Activity {
         while (topY < h && rowInk[topY] == 0) topY++;
         while (bottom > topY && rowInk[bottom] == 0) bottom--;
         if (right - left < w / 4) return null;
-        // widest near-empty vertical strip in the middle band = the gutter
+        // 1) the gutter: widest ink-free vertical strip near the middle, measured only on the
+        //    middle rows of the page so a full-width header or footer can't hide it
+        int midTop = topY + (bottom - topY) * 3 / 10, midBot = topY + (bottom - topY) * 17 / 20;
+        int[] midInk = new int[w];
+        for (int y = midTop; y <= midBot; y++) for (int x = 0; x < w; x++) if (dark(px[y * w + x])) midInk[x]++;
         int from = left + (right - left) * 3 / 10, to = left + (right - left) * 7 / 10;
         int bestStart = -1, bestLen = 0, runStart = -1;
-        int limit = Math.max(1, (bottom - topY) / 60); // a few stray dots allowed
+        int limit = Math.max(1, (midBot - midTop) / 80); // a few stray dots allowed
         for (int x = from; x <= to; x++) {
-            if (colInk[x] <= limit) {
+            if (midInk[x] <= limit) {
                 if (runStart < 0) runStart = x;
                 if (x - runStart + 1 > bestLen) { bestLen = x - runStart + 1; bestStart = runStart; }
             } else runStart = -1;
         }
         if (bestLen < 4) return null; // no clear gutter -> keep the whole page
+        int g0 = bestStart, g1 = bestStart + bestLen - 1;
+
+        // 2) rows whose ink crosses the gutter at the top / bottom = a header / footer spanning both columns
+        boolean[] crosses = new boolean[h];
+        for (int y = topY; y <= bottom; y++) {
+            int n = 0;
+            for (int x = g0; x <= g1; x++) if (dark(px[y * w + x])) n++;
+            crosses[y] = n > 0;
+        }
+        int headEnd = topY - 1;                                   // last crossing row in the top part
+        for (int y = topY; y < topY + (bottom - topY) * 45 / 100; y++) if (crosses[y]) headEnd = y;
+        int footStart = bottom + 1;                               // first crossing row in the bottom part
+        for (int y = bottom; y > topY + (bottom - topY) * 75 / 100; y--) if (crosses[y]) footStart = y;
+        int colTop = headEnd + 1, colBot = footStart - 1;
+        while (colTop < colBot && rowInk[colTop] == 0) colTop++; // trim blank rows around the columns
+        while (colBot > colTop && rowInk[colBot] == 0) colBot--;
+        if (colBot - colTop < (bottom - topY) / 5) return null;  // mostly full-width -> whole page
+
         float k = sizes[page][0] / (float) w, pad = 4 * k;
+        float W = sizes[page][0], H = sizes[page][1];
         // cut exactly in the middle of the blank gutter, so no letters of the other column show
-        float mid = (bestStart + bestLen / 2f) * k;
+        float mid = (g0 + (g1 - g0 + 1) / 2f) * k;
+        float x0 = Math.max(0, left * k - pad), x1 = Math.min(W, right * k + pad);
         return new float[]{
-                Math.max(0, left * k - pad), mid,                                             // left column
-                mid, Math.min(sizes[page][0], right * k + pad),                               // right column
-                Math.max(0, topY * k - pad), Math.min(sizes[page][1], bottom * k + pad)};
+                x0, mid, mid, x1,                                                          // left col, right col
+                Math.max(0, colTop * k - pad), Math.min(H, colBot * k + pad),              // columns y
+                headEnd >= topY ? Math.max(0, topY * k - pad) : -1, headEnd >= topY ? Math.min(H, headEnd * k + pad) : -1,
+                footStart <= bottom ? Math.max(0, footStart * k - pad) : -1, footStart <= bottom ? Math.min(H, bottom * k + pad) : -1};
+    }
+
+    private static boolean dark(int c) {
+        return (Color.red(c) * 3 + Color.green(c) * 6 + Color.blue(c)) / 10 < 200;
     }
 
     private float[][] loadColumns(File f) {
         try {
-            String s = Store.prefs(this).getString("hb_cols2", null);
+            String s = Store.prefs(this).getString("hb_cols3", null);
             if (s == null) return null;
             JSONObject o = new JSONObject(s);
             if (o.optLong("size") != f.length()) return null;
@@ -310,7 +339,7 @@ public class ReaderActivity extends Activity {
                 for (float v : r) x.put(Math.round(v * 10) / 10.0);
                 a.put(x);
             }
-            Store.prefs(this).edit().putString("hb_cols2", new JSONObject().put("size", f.length()).put("pages", a).toString()).apply();
+            Store.prefs(this).edit().putString("hb_cols3", new JSONObject().put("size", f.length()).put("pages", a).toString()).apply();
         } catch (Exception ignored) {}
     }
 
@@ -320,8 +349,10 @@ public class ReaderActivity extends Activity {
         for (int i = 0; i < sizes.length; i++) {
             float[] c = cols[i];
             if (columns && c != null) {
+                if (c.length >= 10 && c[6] >= 0) segs.add(new float[]{i, c[0], c[6], c[3], c[7], 3}); // header, whole width
                 segs.add(new float[]{i, c[2], c[4], c[3], c[5], 1}); // right column first (Yiddish)
                 segs.add(new float[]{i, c[0], c[4], c[1], c[5], 2});
+                if (c.length >= 10 && c[8] >= 0) segs.add(new float[]{i, c[0], c[8], c[3], c[9], 3}); // footer
             } else {
                 segs.add(new float[]{i, 0, 0, sizes[i][0], sizes[i][1], 0});
             }
@@ -359,7 +390,7 @@ public class ReaderActivity extends Activity {
         int off = Store.prefs(this).getInt("hb_off", 0);
         page = Math.max(0, Math.min(page, sizes.length - 1));
         int idx = firstSegOf(page);
-        if (part == 2 && idx + 1 < segs.size() && (int) segs.get(idx + 1)[0] == page) idx++;
+        for (int j = idx; j < segs.size() && (int) segs.get(j)[0] == page; j++) if ((int) segs.get(j)[5] == part) { idx = j; break; }
         current = idx;
         list.setSelectionFromTop(idx, off);
         updateLabel();

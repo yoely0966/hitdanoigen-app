@@ -1154,6 +1154,29 @@ async function loadCats(force) {
       avatar: tr.querySelector('img.klist-avatar')?.getAttribute('src') || '',
     });
   });
+  // sub-groups listed inside a row
+  doc.querySelectorAll('tr[id^="kcat"]').forEach((tr) => {
+    const g = groups.find((x) => x.block === tr.closest('.kblock'));
+    tr.querySelectorAll('.kcc-subcat a[href*="showcat"], .kcc-childcat-title a[href*="showcat"], .kchildcats a[href*="showcat"]').forEach((a) => {
+      const id = qs(a.getAttribute('href')).catid;
+      if (g && id && !groups.some((x) => x.cats.some((c) => c.catid === id))) g.cats.push({ catid: id, title: a.textContent.trim(), desc: '', unread: 0, lastBy: '', lastSubject: '', when: '' });
+    });
+  });
+  // every category the site's "jump to" menu offers, also the ones the index doesn't show
+  const opts = [...(doc.querySelector('select[name=catid]')?.options || [])].filter((o) => +o.value > 0);
+  let section = null;
+  opts.forEach((o, i) => {
+    const raw = o.textContent.replace(/\s+/g, ' ').trim();
+    const child = /^[.\-–\s]+/.test(raw);
+    const title = raw.replace(/^[.\-–\s]+/, '').trim();
+    const nextChild = opts[i + 1] && /^[.\-–\s]+/.test(opts[i + 1].textContent.trim());
+    if (!child && nextChild) { section = title; return; }            // a section header
+    if (groups.some((x) => x.cats.some((c) => c.catid === o.value))) return;
+    const gname = child && section ? section : 'אנדערע גרופעס';
+    let g = groups.find((x) => x.name === gname);
+    if (!g) { g = { block: null, name: gname, cats: [] }; groups.push(g); }
+    g.cats.push({ catid: o.value, title, desc: '', unread: 0, lastBy: '', lastSubject: '', when: '' });
+  });
   forum.cats = { groups: groups.map(({ name, cats }) => ({ name, cats })).filter((g) => g.cats.length), at: Date.now() };
 }
 
@@ -1223,7 +1246,7 @@ async function openCategory(c) {
   try {
     if (!forum.lists[key] || Date.now() - forum.lists[key].at > 3 * 60_000) {
       const doc = await site(`/forum?func=showcat&catid=${c.catid}`);
-      forum.lists[key] = { rows: parseTopics(doc).map((r) => ({ ...r, cat: r.cat || c.title })), at: Date.now(), next: nextPage(doc) };
+      forum.lists[key] = { rows: parseTopics(doc), at: Date.now(), next: nextPage(doc) };
     }
     draw();
   } catch (e) {
@@ -1353,7 +1376,7 @@ function topicRows(rows) {
     <button class="wa-row" data-i="${i}">${avatar(r.avatar, r.lastBy || r.by || r.title)}
       <span class="wa-mid">
         <span class="wa-top"><b>${esc(r.title)}</b><span class="wa-time${r.unread ? ' new' : ''}">${esc(shortWhen(r.when || ''))}</span></span>
-        <span class="wa-top"><span class="wa-sub">${r.lastBy ? `<b>${esc(r.lastBy)}:</b> ` : ''}${esc(r.cat || '')}${r.replies ? ` · ${r.replies} ענטפערס` : ''}${r.views ? ` · 👁 ${esc(r.views)}` : ''}</span>
+        <span class="wa-top"><span class="wa-sub">${esc([r.lastBy, r.cat, r.views ? r.views + ' באזוכער' : ''].filter(Boolean).join(' · '))}</span>
           ${pins[r.id] ? '<span class="wa-ic">📌</span>' : ''}
           ${r.unread ? `<span class="wa-badge">${r.unread > 999 ? '999+' : r.unread}</span>` : ''}</span>
       </span></button>`).join('');
@@ -1488,7 +1511,7 @@ async function openThread(topic) {
   topic.unread = 0;
   const el = chatScreen({
     title: topic.title,
-    sub: esc([topic.cat || '', topic.views ? `👁 ${topic.views} קוקערס` : ''].filter(Boolean).join(' · ')),
+    sub: esc([topic.cat || '', topic.views ? `${topic.views} באזוכער` : ''].filter(Boolean).join(' · ')),
     av: avatar(topic.avatar, topic.lastBy || topic.by || topic.title, 'wa-av sm'),
     menu: () => topicMenu(topic, t.actions),
   });

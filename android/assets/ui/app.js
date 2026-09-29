@@ -316,6 +316,24 @@ function paintFab() {
   setTimeout(() => b.remove(), 9000);
 }
 
+/** My forum photo (cached on the phone; checked once a day). */
+function myAvatar() { try { return localStorage.getItem('myAv') || ''; } catch { return ''; } }
+async function loadMyAvatar() {
+  try {
+    if (Date.now() - +(localStorage.getItem('myAvAt') || 0) < 86400000) return;
+    localStorage.setItem('myAvAt', String(Date.now()));
+    const d = await site('/forum/profile');
+    const img = [...d.querySelectorAll('img.kavatar, .kavatar img, img[src*="/avatars/"], img[src*="avatar"]')]
+      .map((i) => i.getAttribute('src')).find((s) => s && !/nophoto|noavatar|default/i.test(s));
+    const url = img ? absUrl(img) : '';
+    if (url !== myAvatar()) {
+      localStorage.setItem('myAv', url);
+      const b = $('#meBadge');
+      if (b && url) b.innerHTML = `<img src="${esc(url)}" alt="">`;
+    }
+  } catch {}
+}
+
 /** Clean days so far (from the streak start, or the site's own count). */
 function myDays() {
   const st0 = streakStart();
@@ -365,12 +383,13 @@ function renderHome() {
     ${state.update?.available ? `<button class="banner" id="updBanner" style="width:100%">${icon('download')} <span class="grow">א נייע ווערזשן (${esc(state.update.latest)}) איז גרייט</span>${icon('chev')}</button>` : ''}
     <button class="staff-home hidden" id="staffHome"><span class="sp-av">ש</span><span class="grow"><b></b><span>דריק צו לייענען</span></span>${icon('chev')}</button>
     <header class="home-top sky ${dayPart()}">
+      <span class="sky-ic" aria-hidden="true">${{ morning: '🌤️', day: '☀️', evening: '🌇', night: '🌙' }[dayPart()]}</span>
       <div class="grow">
         <div class="ht-hello">${greeting()},</div>
         <div class="ht-name">${esc(name)}</div>
-        ${start ? `<div class="ht-since">דו האסט אנגעהויבן דיין רייזע אום ${esc(fmtHeb(start))} – <span class="ltr">${esc(fmtGreg(start))}</span></div>` : ''}
+        ${start ? `<div class="ht-since">🗓️ אנגעהויבן <b class="nw">${esc(fmtHeb(start))}</b> · <span class="ltr nw">${esc(fmtGreg(start))}</span></div>` : ''}
       </div>
-      <button class="me-av" id="meBadge" aria-label="מיין פראפיל">${esc((name || '?').trim().charAt(0).toUpperCase())}</button>
+      <button class="me-av" id="meBadge" aria-label="מיין פראפיל">${myAvatar() ? `<img src="${esc(myAvatar())}" alt="">` : esc((name || '?').trim().charAt(0).toUpperCase())}</button>
     </header>
     <section class="hero hero2">
       <span class="blob b1"></span><span class="blob b2"></span>
@@ -382,10 +401,10 @@ function renderHome() {
       <div class="ring-wrap">
         <svg class="ring" viewBox="0 0 120 120" aria-hidden="true">
           <circle cx="60" cy="60" r="52" class="ring-bg"/>
-          <circle cx="60" cy="60" r="52" class="ring-fg" pathLength="100" style="stroke-dasharray:${Math.max(2, Math.round(goal.pct * 100))} 100"/>
+          ${goal.pct > 0.01 ? `<circle cx="60" cy="60" r="52" class="ring-fg" pathLength="100" style="stroke-dasharray:${Math.round(goal.pct * 100)} 100"/>` : ''}
         </svg>
         <div class="ring-in">
-          <div class="days num" id="cDays">${days}</div>
+          <div class="days num${String(days).length > 3 ? ' d4' : String(days).length > 2 ? ' d3' : ''}" id="cDays">${days}</div>
           <div class="days-label">${days === 1 ? 'טאג ריין' : 'טעג ריין'}</div>
         </div>
       </div>
@@ -439,20 +458,14 @@ function renderHome() {
 
     ${handbookCard()}
 
-    <section class="card ai-card"><div class="row" style="margin-bottom:10px"><span style="font-size:22px">🤖</span>
-      <b class="grow">AI געהילף</b><span class="muted small">רעד יעצט, ענטפערט גלייך</span></div>
-      <div id="aiHome" class="ai-list"><div class="skel" style="height:64px"></div></div></section>
 
-    ${!N.hasWidget() && N.canPinWidget() ? `
-    <button class="card row" id="bWidget" style="width:100%;text-align:right">
-      <span class="ic" style="width:42px;height:42px;border-radius:14px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center">${icon('widget')}</span>
-      <span class="grow"><b>לייג צו א ווידזשעט</b><br><span class="muted small">זע דיינע טעג און אפדעיט דעם טשארט גלייך פון די האום-סקרין</span></span>${icon('chev')}
-    </button>` : ''}
+
     <div class="pull">דאטא גלייך פון די וועבזייטל · <a href="#" id="bRefresh">ריפרעש</a></div>`;
 
   $('#bClean').onclick = () => checkInClean();
   fitOneLine('.ci-tile b');
   $('#meBadge').onclick = () => profileMenu();
+  loadMyAvatar();
   $('#staffHome').onclick = () => N.openStaff();
   paintStaff();
   $('#bFall').onclick = () => setbackSheet();
@@ -460,15 +473,7 @@ function renderHome() {
   $('#ciChart').onclick = () => { state.chart.seg = days >= 90 ? 'woh' : 'c90'; go('chart'); };
   $('#ciRemind').onclick = () => { go('more'); setTimeout(() => $('#rOn')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 80); };
   $('#bWall') && ($('#bWall').onclick = () => { state.chart.seg = 'woh'; go('chart'); });
-  $('#bWidget') && ($('#bWidget').onclick = () => N.pinWidget());
   $('#bBook') && ($('#bBook').onclick = () => N.openHandbook());
-  loadBots().then((bots) => {
-    const box = $('#aiHome');
-    if (!box) return;
-    if (!bots.length) { box.closest('.ai-card').remove(); return; }
-    box.innerHTML = aiButtons(bots);
-    bindAi(box);
-  });
   $('#updBanner') && ($('#updBanner').onclick = () => updateSheet());
   $('#bRefresh').onclick = (e) => { e.preventDefault(); toast('ריפרעשט...'); loadHome(); };
   startClock(start);
@@ -1159,7 +1164,6 @@ function renderMore() {
         <button class="linkbtn" id="rTest">שיק א טעסט</button>
         ${N.notifAllowed() ? '' : '<div class="warn">נאטיפיקעישאנס זענען אפ אין די פאון סעטינגס</div>'}
       </div>
-      ${N.canPinWidget() ? row('wPin', 'widget', '#10b981', 'ווידזשעט', N.hasWidget() ? 'עד נאך איינס' : 'עד צום האום-סקרין') : row('', 'widget', '#10b981', 'ווידזשעט', 'האלט אן דעם האום-סקרין ← ווידזשעטס', '')}
     </div>
 
     <div class="section-title">הילף</div>
@@ -1206,7 +1210,6 @@ function renderMore() {
   }));
   $('#rAdd') && ($('#rAdd').onclick = () => { const s2 = save(); s2.times.push('08:00'); N.setSettings(JSON.stringify(s2)); renderMore(); });
   $('#rTest').onclick = () => { N.testReminder(); toast('א טעסט איז געשיקט'); };
-  $('#wPin') && ($('#wPin').onclick = () => N.pinWidget());
   document.querySelectorAll('[data-l]').forEach((b) => (b.onclick = () => { const l = LINKS[+b.dataset.l]; if (l.u === 'handbook') N.openHandbook(); else N.openWeb(l.u, l.t); }));
   $('#uCheck').onclick = () => updateSheet(true);
   document.querySelectorAll('[data-sec]').forEach((b) => (b.onclick = () => {

@@ -1,0 +1,12 @@
+# build output
+android/build/
+dist/
+
+# signing key and its passwords - NEVER publish these (back them up privately:
+# every update must be signed with the same key or phones refuse to install it)
+*.jks
+*.keystore
+android/keystore.properties
+
+# local notes
+yiddish-words.csv

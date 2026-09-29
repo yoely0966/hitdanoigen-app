@@ -1,0 +1,4 @@
+build/
+# signing key - back these up, never publish them
+# hdo-release.jks
+# keystore.properties

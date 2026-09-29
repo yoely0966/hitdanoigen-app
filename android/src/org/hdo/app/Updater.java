@@ -74,7 +74,7 @@ public final class Updater {
 
     static void install(Activity act, String url) {
         if (Build.VERSION.SDK_INT >= 26 && !act.getPackageManager().canRequestPackageInstalls()) {
-            Toast.makeText(act, "ערלויב די אפ צו אינסטאלירן אפדעיטס, און דריק נאכאמאל", Toast.LENGTH_LONG).show();
+            Toast.makeText(act, "ערלויב די עפפ צו אינסטאלירן אפדעיטס, און דרוק נאכאמאל", Toast.LENGTH_LONG).show();
             act.startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                     Uri.parse("package:" + act.getPackageName())));
             return;
@@ -94,7 +94,7 @@ public final class Updater {
                 app.unregisterReceiver(this);
                 Uri apk = dm.getUriForDownloadedFile(id);
                 if (apk == null) {
-                    Toast.makeText(app, "דאונלאוד האט נישט געקלאפט", Toast.LENGTH_LONG).show();
+                    Toast.makeText(app, "די דאונלאוד האט נישט געקלאפט", Toast.LENGTH_LONG).show();
                     return;
                 }
                 Intent inst = new Intent(Intent.ACTION_VIEW)

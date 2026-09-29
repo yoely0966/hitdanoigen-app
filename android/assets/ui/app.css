@@ -56,7 +56,7 @@ a { color: var(--accent); text-decoration: none; }
 .num { font-variant-numeric: tabular-nums; }
 
 /* ---------- layout ---------- */
-#view { padding: 0 16px calc(96px + env(safe-area-inset-bottom)); max-width: 640px; margin: 0 auto; }
+#view { padding: 0 16px calc(128px + env(safe-area-inset-bottom)); max-width: 640px; margin: 0 auto; }
 .page-title { font-size: 26px; font-weight: 800; margin: 22px 4px 14px; }
 .section-title { font-size: 15px; font-weight: 700; color: var(--muted); margin: 22px 6px 8px; }
 .card {

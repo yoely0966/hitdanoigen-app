@@ -60,7 +60,7 @@ public final class AppLock {
         } else if (Build.VERSION.SDK_INT == 29) {
             b.setDeviceCredentialAllowed(true);
         } else {
-            b.setNegativeButton("קענסל", a.getMainExecutor(), (d, w) -> r.done(false));
+            b.setNegativeButton("אפזאגן", a.getMainExecutor(), (d, w) -> r.done(false));
         }
         final boolean[] fired = {false};
         b.build().authenticate(new CancellationSignal(), a.getMainExecutor(), new BiometricPrompt.AuthenticationCallback() {

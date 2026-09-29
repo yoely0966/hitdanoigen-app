@@ -161,7 +161,7 @@ function showLogin(msg) {
         <div class="pw"><input id="lp" class="input" type="password" autocomplete="current-password" dir="ltr">
         <button id="eye" type="button" aria-label="ווייז">${icon('eye')}</button></div></label>
       <label class="check"><input id="lr" type="checkbox" checked>
-        <span>בלייב איינגעלאגט<br><span class="muted small">דער פאסווארט ווערט געהאלטן ענקריפּטעד נאר אויף דעם פאון, כדי די אפ זאל זיך קענען אליין ריפרעשן.</span></span></label>
+        <span>בלייב איינגעלאגט<br><span class="muted small">דער פאסווארט ווערט געהאלטן ענקריפטעד נאר אויף דעם פאון, כדי די אפ זאל זיך קענען אליין ריפרעשן.</span></span></label>
       <button id="lb" class="btn">לאג איין</button>
       <p class="center small" style="margin-top:18px"><a href="#" id="lf">פארגעסן פאסווארט? / נייע אקאונט</a></p>
     </div>`;
@@ -300,13 +300,13 @@ function renderHome() {
     <div class="section-title">סטאטיסטיקס</div>
     <div class="stats">
       <div class="stat"><b class="num">${prog?.victories ?? st.cleanDaysCount ?? 0}</b><span>ריינע טעג אינגאנצן</span></div>
-      <div class="stat"><b class="num">${prog?.longestStreak ?? 0}</b><span>לענגסטע שטרעקע</span></div>
+      <div class="stat"><b class="num">${prog?.longestStreak ?? 0}</b><span>לענגסטע טעג ריין</span></div>
       <div class="stat"><b class="num">${prog?.successRate ?? st.successRate ?? 0}%</b><span>סוקסעס ראטע</span></div>
       <div class="stat"><b class="num">${prog?.setbacks ?? 0}</b><span>דורכפעלער</span></div>
     </div>
 
     ${lb.userList?.length ? `
-    <div class="section-title">טאבעלע</div>
+    <div class="section-title">טשארט</div>
     <section class="card">
       <div class="row" style="margin-bottom:8px"><div class="grow"><div class="muted small">דיין פלאץ</div>
         <div class="rank-big num">#${esc(lb.rank)}</div><div class="muted small">פון ${esc(lb.usersCount)} מיטגלידער</div></div>
@@ -317,9 +317,9 @@ function renderHome() {
     ${!N.hasWidget() && N.canPinWidget() ? `
     <button class="card row" id="bWidget" style="width:100%;text-align:right">
       <span class="ic" style="width:42px;height:42px;border-radius:14px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center">${icon('widget')}</span>
-      <span class="grow"><b>עד א ווידזשעט</b><br><span class="muted small">זע דיינע טעג און אפדעיט דעם טשארט גלייך פונעם היים-סקרין</span></span>${icon('chev')}
+      <span class="grow"><b>לייג צו א ווידזשעט</b><br><span class="muted small">זע דיינע טעג און אפדעיט דעם טשארט גלייך פון די היים-סקרין</span></span>${icon('chev')}
     </button>` : ''}
-    <div class="pull">דאטא גלייך פונעם וועבזייטל · <a href="#" id="bRefresh">ריפרעש</a></div>`;
+    <div class="pull">דאטא גלייך פון די וועבזייטל · <a href="#" id="bRefresh">ריפרעש</a></div>`;
 
   $('#bClean').onclick = () => checkInClean();
   $('#bFall').onclick = () => setbackSheet();
@@ -361,7 +361,7 @@ async function checkInClean() {
     openModal(`
       <div class="celebrate">🎉</div>
       <h2>${streak != null ? esc(streak) + ' טעג ריין!' : 'אפדעיטעד!'}</h2>
-      <p>דיין טשארט איז אפדעיטעד פאר היינט.${lvlUp ? `<br><b>מזל טוב! דו ביסט ארויף צו שטאפל ${esc(lvlUp)}</b>` : ''}${rankTxt}<br>האלט אזוי ווייטער!</p>
+      <p>דיין טשארט איז אפדעיטעד פאר היינט.${lvlUp ? `<br><b>מזל טוב! דו ביסט ארויף צו שטאפל ${esc(lvlUp)}</b>` : ''}${rankTxt}<br>האלט אן ווייטער!</p>
       <button class="btn" data-close>שיין!</button>`);
     loadHome(true);
   } catch (e) {
@@ -393,29 +393,29 @@ function setbackSheet() {
   const local = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   openModal(`
     <h2>א דורכפאל</h2>
-    <p>עס איז שווער, אבער וויכטיג איז צו שטיין אויף און גיין ווייטער. יעדער ריינער טאג וואס דו האסט שוין געהאט בלייבט דיינער.</p>
+    <p>עס איז שווער, אבער וויכטיג איז אויפצושטיין און גיין ווייטער. יעדער ריינער טאג וואס דו האסט שוין געהאט בלייבט דיינער.</p>
     <label class="field"><span>ווען איז עס געשען?</span>
       <input id="sbDate" class="input" type="datetime-local" dir="ltr" value="${local(now)}" max="${local(now)}"></label>
     <div class="btns">
-      <button class="btn" id="sbGo">קאנפירם</button>
+      <button class="btn" id="sbGo">באשטעטיג</button>
       <button class="btn line" data-close>צוריק</button>
     </div>`);
   $('#sbGo').onclick = async () => {
     const v = $('#sbDate').value;
     const d = v ? new Date(v) : new Date();
-    if (d > new Date()) { toast('די צייט קען נישט זיין אין די צוקונפט'); return; }
+    if (d > new Date()) { toast('די צייט קען נישט זיין אין די פיוטשער'); return; }
     $('#sbGo').disabled = true;
     try {
       await api('/daily-check-in', 'POST', { isSetback: true, setbackDate: d.toISOString() });
       N.checkedIn(true);
       openModal(`
         <div class="celebrate">💪</div>
-        <h2>א נייער אנפאנג</h2>
-        <p>דיין נייע שטרעקע הייבט זיך אן יעצט. דו ביסט נישט אליין – רעד מיט איינעם, דאס העלפט.</p>
+        <h2>א נייער אנהויב</h2>
+        <p>דיינע נייע ריינע טעג הייבן זיך אן יעצט. דו ביסט נישט אליין – רעד מיט איינעם, דאס העלפט.</p>
         <div class="btns">
           <button class="btn" id="sbPlan">${icon('plan')} מאך א פלאן</button>
           <a class="btn ghost" href="tel:+17185676100">${icon('phone')} רוף דעם האטליין</a>
-          <button class="btn line" data-close>צומאכן</button>
+          <button class="btn line" data-close>פארמאכן</button>
         </div>`);
       $('#sbPlan').onclick = () => { closeModal(); N.openWeb(APP + '/plan', 'מיין פלאן'); };
       loadHome(true);
@@ -695,7 +695,7 @@ function renderJournal(inChart) {
       <button class="btn ghost" id="jApp" style="margin-bottom:12px">${icon('book')} מיין פריוואטער זשורנאל</button>
       <div class="section-title">מיין 90-טעג רייזע</div>
       ${j.entries.length ? `<div class="list">${j.entries.map((e) => `<div class="entry ${e.kind}"><div class="when">${esc(e.when)}</div><div class="what">${esc(e.what)}</div>${e.more ? `<div class="more">${esc(e.more)}</div>` : ''}</div>`).join('')}</div>`
-        : '<div class="card center muted">נאך קיין איינטראגן</div>'}`;
+        : '<div class="card center muted">נאך נישטא קיין איינטראגן</div>'}`;
     $('#jApp').onclick = () => N.openWeb(APP + '/journal', 'זשורנאל');
   };
   if (state.journal && Date.now() - state.journal.at < 5 * 60_000) return draw();
@@ -727,7 +727,7 @@ function renderMore() {
     <section class="card">
       <div class="row"><span class="grow"><b>לאק מיט פינגערפרינט / פעיס</b><br><span class="muted small">${N.lockAvailable()
         ? 'די אפ וועט פרעגן פאר דיין פינגערפרינט, פעיס אדער PIN יעדעס מאל ווען דו עפנסט זי'
-        : 'סעט-אפ קודם א פינגערפרינט אדער פעיס אין די פאון סעטינגס'}</span></span>
+        : 'שטעל קודם צו א פינגערפרינט אדער פעיס אין די פאון סעטינגס'}</span></span>
         <label class="switch"><input type="checkbox" id="lockOn" ${N.lockEnabled() ? 'checked' : ''} ${N.lockAvailable() || N.lockEnabled() ? '' : 'disabled'}><i></i></label></div>
     </section>
 
@@ -834,7 +834,7 @@ async function updateSheet(fresh) {
     if (st) st.textContent = `ווערזשן ${N.version()}`;
   }
   const u = state.update;
-  if (u.error) { toast(u.error === 'no_releases' ? 'נאך קיין אפדעיטס נישט ארויסגעגעבן' : 'קען נישט קוקן יעצט – פרוביר שפעטער'); return; }
+  if (u.error) { toast(u.error === 'no_releases' ? 'נישטא קיין אפדעיטס.' : 'קען נישט קוקן יעצט – פרוביר שפעטער'); return; }
   if (!u.available) { toast(`דו האסט די לעצטע ווערזשן (${u.current})`); return; }
   openModal(`
     <h2>נייע ווערזשן ${esc(u.latest)}</h2>
@@ -846,7 +846,7 @@ async function updateSheet(fresh) {
 
 /* ---------------- start ---------------- */
 if (!N) {
-  document.body.innerHTML = '<p style="padding:24px">די זייט ארבעט נאר אינעווייניג אין דער אפ.</p>';
+  document.body.innerHTML = '<p style="padding:24px">די זייט ארבעט נאר אינעווייניג אין דער עפפ.</p>';
 } else {
   window.addEventListener("DOMContentLoaded", boot);
 }

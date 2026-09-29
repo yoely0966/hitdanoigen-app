@@ -24,7 +24,7 @@ const FILTERS = [
   { id: 'recent', t: 'לעצטע', path: '/forum/recent' },
   { id: 'mine', t: 'מיינע', path: '/forum/mylatest' },
   { id: 'noreplies', t: 'אומגעענטפערט', path: '/forum/noreplies' },
-  { id: 'pinned', t: '📌 געפינטע', path: null },
+  { id: 'pinned', t: '📌 אנגעהאנגענע', path: null },
 ];
 const REACTIONS = [
   ['Like', '👍'], ['Heart', '❤️'], ['Clap', '👏'], ['Fire', '🔥'], ['Smile', '😊'], ['Love', '😍'], ['Think', '🤔'], ['Calm', '😌'], ['Dislike', '👎'],
@@ -61,7 +61,7 @@ function togglePin(t) {
   if (p[t.id]) delete p[t.id];
   else p[t.id] = { id: t.id, catid: t.catid, title: t.title, cat: t.cat || '', avatar: t.avatar || '', lastBy: t.lastBy || '', at: Date.now() };
   savePins(p);
-  toast(p[t.id] ? '📌 געפינט' : 'אראפגענומען');
+  toast(p[t.id] ? '📌 אנגעהאנגען' : 'אראפגענומען');
   return !!p[t.id];
 }
 
@@ -372,7 +372,7 @@ async function pinConv(c, on) {
   try {
     await gql('mutation P($c:Int!,$p:Boolean!){ pinnedConversation(conversationId:$c, isPinned:$p){ id conversationToUser{ isPinned } } }', { c: c.id, p: on });
     c.conversationToUser = { ...(c.conversationToUser || {}), isPinned: on };
-    toast(on ? '📌 געפינט' : 'אראפגענומען');
+    toast(on ? '📌 אנגעהאנגען' : 'אראפגענומען');
     drawConvs();
   } catch (e) { toast(errText(e)); }
 }
@@ -905,7 +905,7 @@ function topicRows(rows) {
     <button class="wa-row" data-i="${i}">${avatar(r.avatar, r.lastBy || r.by || r.title)}
       <span class="wa-mid">
         <span class="wa-top"><b>${esc(r.title)}</b><span class="wa-time${r.unread ? ' new' : ''}">${esc(shortWhen(r.when || ''))}</span></span>
-        <span class="wa-top"><span class="wa-sub">${r.lastBy ? `<b>${esc(r.lastBy)}:</b> ` : ''}${esc(r.cat || '')}${r.replies ? ` · ${r.replies} ענטפערס` : r.views ? ` · ${esc(r.views)} באזוכער` : ''}</span>
+        <span class="wa-top"><span class="wa-sub">${r.lastBy ? `<b>${esc(r.lastBy)}:</b> ` : ''}${esc(r.cat || '')}${r.replies ? ` · ${r.replies} ענטפערס` : r.views ? ` · ${esc(r.views)} קוקערס` : ''}</span>
           ${pins[r.id] ? '<span class="wa-ic">📌</span>' : ''}
           ${r.unread ? `<span class="wa-badge">${r.unread > 999 ? '999+' : r.unread}</span>` : ''}</span>
       </span></button>`).join('');
@@ -1127,7 +1127,7 @@ async function loadOlder(btn) {
 async function likePost(btn) {
   btn.disabled = true;
   const r = await http('GET', absUrl(btn.dataset.like));
-  if (r.ok) { btn.classList.add('liked'); btn.textContent = '👍 א דאנק'; toast('א דאנק איז געשיקט'); }
+  if (r.ok) { btn.classList.add('liked'); btn.textContent = '👍 א דאנק'; toast('א דאנק איז געשיקט געווארן'); }
   else { btn.disabled = false; toast(errText(r.status === 0 ? new Error('offline') : null)); }
 }
 
@@ -1179,7 +1179,7 @@ async function sendReply(t) {
     forum.lists = {};
     const newest = page.posts.slice(-1)[0];
     if (!newest || newest.author.trim().toLowerCase() !== (t.reply?.me || '').trim().toLowerCase()) {
-      toast('די מעלדונג ווייזט זיך נאך נישט – אפשר דארף זי ווערן אפּרוּווט');
+      toast('די מעלדונג ווייזט זיך נאך נישט – אפשר דארף זי ווערן באשטעטיגט');
     }
   } catch { tmp.classList.remove('pending'); }
 }

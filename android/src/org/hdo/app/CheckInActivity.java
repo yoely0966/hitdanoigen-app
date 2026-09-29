@@ -72,7 +72,7 @@ public class CheckInActivity extends Activity {
                     box.addView(text("עס האט נישט געקלאפט", 22, true, Color.parseColor("#DC2626")));
                     box.addView(text("קוק צי דו ביסט פארבינדן צום אינטערנעט און פרוביר נאכאמאל.", 15, false, ink()), lp(dp(8), dp(18)));
                     box.addView(button("פרוביר נאכאמאל", true, v -> send()), lp(0, dp(10)));
-                    box.addView(button("צומאכן", false, v -> finish()), lp(0, 0));
+                    box.addView(button("פארמאכן", false, v -> finish()), lp(0, 0));
                     return;
                 }
                 int streak = r.optInt("cleanDaysStreak", ChartWidget.daysClean(this, ChartWidget.summary(this)));

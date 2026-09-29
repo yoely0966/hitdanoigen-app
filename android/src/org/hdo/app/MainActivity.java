@@ -318,7 +318,7 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void setLock(boolean on) {
             runOnUiThread(() -> {
                 prompting = true;
-                AppLock.prompt(MainActivity.this, on ? "קאנפירם צו טורנען אן דעם לאק" : "קאנפירם צו טורנען אפ דעם לאק", ok -> {
+                AppLock.prompt(MainActivity.this, on ? "קאנפירם צו צינדן אן דעם לאק" : "קאנפירם צו אויסלעשן דעם לאק", ok -> {
                     prompting = false;
                     if (ok) AppLock.setEnabled(MainActivity.this, on);
                     js("window.onLockSet(" + AppLock.enabled(MainActivity.this) + "," + ok + ")");

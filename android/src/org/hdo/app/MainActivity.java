@@ -347,8 +347,12 @@ public class MainActivity extends Activity {
             pool.execute(() -> reply("onHttp", id, 200, Updater.check(MainActivity.this).toString()));
         }
 
+        /** Downloads + installs; progress arrives as window.onUpdateProgress(pct, state, error). */
         @JavascriptInterface public void installUpdate(String url) {
-            runOnUiThread(() -> Updater.install(MainActivity.this, url));
+            Updater.Progress p = (pct, st, err) -> js("window.onUpdateProgress&&window.onUpdateProgress(" + pct + ","
+                    + JSONObject.quote(st) + "," + JSONObject.quote(err == null ? "" : err) + ")");
+            InstallReceiver.listener = p;
+            runOnUiThread(() -> Updater.install(MainActivity.this, url, p));
         }
 
         @JavascriptInterface public boolean canPinWidget() {

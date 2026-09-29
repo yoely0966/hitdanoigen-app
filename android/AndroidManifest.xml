@@ -63,6 +63,11 @@
                 android:resource="@xml/chart_widget_info" />
         </receiver>
 
+        <!-- result of an in-app update (PackageInstaller session) -->
+        <receiver
+            android:name=".InstallReceiver"
+            android:exported="false" />
+
         <receiver
             android:name=".ReminderReceiver"
             android:exported="true">

@@ -1,16 +1,12 @@
 package org.hdo.app;
 
 import android.app.Activity;
-import android.app.DownloadManager;
-import android.content.BroadcastReceiver;
+import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.net.Uri;
 import android.os.Build;
-import android.os.Environment;
 import android.provider.Settings;
-import android.widget.Toast;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -72,40 +68,88 @@ public final class Updater {
         try { return Integer.parseInt(s.replaceAll("\\D.*", "")); } catch (Exception e) { return 0; }
     }
 
-    static void install(Activity act, String url) {
+    /** Progress back to the page: state = "download" | "install" | "perm" | "error". */
+    interface Progress { void on(int pct, String state, String error); }
+
+    /**
+     * Downloads the APK ourselves (follows GitHub's redirects, shows progress) and hands it to
+     * Android's own PackageInstaller - no DownloadManager, no file URIs, works on every phone.
+     */
+    static void install(Activity act, String url, Progress p) {
         if (Build.VERSION.SDK_INT >= 26 && !act.getPackageManager().canRequestPackageInstalls()) {
-            Toast.makeText(act, "ערלויב די עפפ צו אינסטאלירן אפדעיטס, און דרוק נאכאמאל", Toast.LENGTH_LONG).show();
             act.startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                     Uri.parse("package:" + act.getPackageName())));
+            p.on(0, "perm", null);
             return;
         }
-        new java.io.File(act.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "hitdanoigen-update.apk").delete();
-        DownloadManager dm = (DownloadManager) act.getSystemService(Context.DOWNLOAD_SERVICE);
-        DownloadManager.Request req = new DownloadManager.Request(Uri.parse(url))
-                .setTitle("היט דיינע אויגן - אפדעיט")
-                .setMimeType("application/vnd.android.package-archive")
-                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
-                .setDestinationInExternalFilesDir(act, Environment.DIRECTORY_DOWNLOADS, "hitdanoigen-update.apk");
-        long id = dm.enqueue(req);
         Context app = act.getApplicationContext();
-        BroadcastReceiver done = new BroadcastReceiver() {
-            @Override public void onReceive(Context c, Intent i) {
-                if (i.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1) != id) return;
-                app.unregisterReceiver(this);
-                Uri apk = dm.getUriForDownloadedFile(id);
-                if (apk == null) {
-                    Toast.makeText(app, "די דאונלאוד האט נישט געקלאפט", Toast.LENGTH_LONG).show();
-                    return;
+        new Thread(() -> {
+            java.io.File f = new java.io.File(app.getCacheDir(), "update.apk");
+            try {
+                download(app, url, f, pct -> p.on(pct, "download", null));
+                android.content.pm.PackageInfo info = app.getPackageManager().getPackageArchiveInfo(f.getPath(), 0);
+                if (info == null || !app.getPackageName().equals(info.packageName)) throw new Exception("bad_file");
+                p.on(100, "install", null);
+                android.content.pm.PackageInstaller pi = app.getPackageManager().getPackageInstaller();
+                android.content.pm.PackageInstaller.SessionParams params =
+                        new android.content.pm.PackageInstaller.SessionParams(android.content.pm.PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+                params.setAppPackageName(app.getPackageName());
+                params.setSize(f.length());
+                int sid = pi.createSession(params);
+                try (android.content.pm.PackageInstaller.Session session = pi.openSession(sid)) {
+                    try (java.io.InputStream in = new java.io.FileInputStream(f);
+                         java.io.OutputStream out = session.openWrite("base.apk", 0, f.length())) {
+                        byte[] buf = new byte[65536];
+                        int n;
+                        while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                        session.fsync(out);
+                    }
+                    int flags = PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 31 ? PendingIntent.FLAG_MUTABLE : 0);
+                    PendingIntent done = PendingIntent.getBroadcast(app, sid, new Intent(app, InstallReceiver.class), flags);
+                    session.commit(done.getIntentSender());
                 }
-                Intent inst = new Intent(Intent.ACTION_VIEW)
-                        .setDataAndType(apk, "application/vnd.android.package-archive")
-                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
-                app.startActivity(inst);
+            } catch (Exception e) {
+                f.delete();
+                p.on(0, "error", String.valueOf(e.getMessage()));
             }
-        };
-        IntentFilter f = new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE);
-        if (Build.VERSION.SDK_INT >= 33) app.registerReceiver(done, f, Context.RECEIVER_EXPORTED);
-        else app.registerReceiver(done, f);
-        Toast.makeText(act, "מען דאונלאודט דעם אפדעיט...", Toast.LENGTH_SHORT).show();
+        }).start();
+    }
+
+    interface Pct { void on(int pct); }
+
+    private static void download(Context app, String url, java.io.File to, Pct pct) throws Exception {
+        String next = url;
+        for (int hop = 0; hop < 6; hop++) {
+            java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(next).openConnection();
+            c.setInstanceFollowRedirects(false); // GitHub hops github.com -> release-assets host; follow by hand
+            c.setConnectTimeout(20_000);
+            c.setReadTimeout(30_000);
+            c.setRequestProperty("User-Agent", "HitDaneOigen-Updater");
+            c.setRequestProperty("Accept", "application/octet-stream");
+            int code = c.getResponseCode();
+            if (code >= 300 && code < 400) {
+                next = new java.net.URL(new java.net.URL(next), c.getHeaderField("Location")).toString();
+                c.disconnect();
+                continue;
+            }
+            if (code != 200) { c.disconnect(); throw new Exception("http_" + code); }
+            long total = c.getContentLengthLong();
+            try (java.io.InputStream in = c.getInputStream(); java.io.OutputStream out = new java.io.FileOutputStream(to)) {
+                byte[] buf = new byte[32768];
+                long got = 0;
+                int n, last = -1;
+                while ((n = in.read(buf)) > 0) {
+                    out.write(buf, 0, n);
+                    got += n;
+                    int p = total > 0 ? (int) (got * 100 / total) : -1;
+                    if (p != last) { last = p; pct.on(p); }
+                }
+                if (total > 0 && got != total) throw new Exception("incomplete");
+            } finally {
+                c.disconnect();
+            }
+            return;
+        }
+        throw new Exception("too_many_redirects");
     }
 }

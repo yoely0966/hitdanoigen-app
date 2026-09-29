@@ -841,8 +841,52 @@ async function updateSheet(fresh) {
     <p>דו האסט יעצט ${esc(u.current)}.</p>
     ${u.notes ? `<div class="note" style="white-space:pre-line;text-align:right">${esc(u.notes.slice(0, 1200))}</div>` : ''}
     <div class="btns"><button class="btn" id="uGo">${icon('download')} דאונלאוד און אינסטאלירן</button><button class="btn line" data-close>שפעטער</button></div>`);
-  $('#uGo').onclick = () => { N.installUpdate(u.url); closeModal(); };
+  $('#uGo').onclick = () => startUpdate(u);
 }
+
+const LATEST_APK = 'https://github.com/yoely0966/hitdanoigen-app/releases/latest/download/HitDaneOigen.apk';
+
+/** Download + install inside the app, with progress; the browser is the fallback. */
+function startUpdate(u) {
+  openModal(`
+    <h2>אפדעיט צו ${esc(u.latest)}</h2>
+    <p id="upTxt">מען דאונלאודט…</p>
+    <div class="upbar"><i id="upBar" style="width:0%"></i></div>
+    <div id="upBtns" class="btns hidden" style="margin-top:16px">
+      <button class="btn" id="upRetry">${icon('refresh')} פרוביר נאכאמאל</button>
+      <button class="btn ghost" id="upWeb">${icon('globe')} דאונלאוד אין בראוזער</button>
+      <button class="btn line" data-close>צוריק</button>
+    </div>`);
+  $('#upRetry').onclick = () => startUpdate(u);
+  $('#upWeb').onclick = () => { closeModal(); N.openWeb(LATEST_APK, ''); };
+  N.installUpdate(u.url);
+}
+const UPDATE_ERRORS = {
+  perm: 'ערלויב די עפפ צו אינסטאלירן אפדעיטס (אין דעם סקרין וואס האט זיך געעפנט), קום צוריק און דרוק "פרוביר נאכאמאל".',
+  aborted: 'דער אפדעיט איז אפגעזאגט געווארן.',
+  conflict: 'דער טעלעפאן האט נישט אנגענומען דעם אפדעיט (אן אנדערע ווערזשן איז אינסטאלירט). דאונלאוד אין בראוזער.',
+  storage: 'נישט גענוג פלאץ אויפ\'ן טעלעפאן.',
+  incompatible: 'דער אפדעיט פאסט נישט פאר דעם טעלעפאן.',
+  bad_file: 'דער דאונלאוד איז נישט אינגאנצן אנגעקומען.',
+  incomplete: 'דער דאונלאוד איז איבערגעריסן געווארן.',
+};
+window.onUpdateProgress = (pct, st, err) => {
+  const txt = $('#upTxt'), bar = $('#upBar'), btns = $('#upBtns');
+  if (!txt) return;
+  if (st === 'download') {
+    txt.textContent = pct >= 0 ? `מען דאונלאודט… ${pct}%` : 'מען דאונלאודט…';
+    if (pct >= 0) bar.style.width = pct + '%';
+  } else if (st === 'install') {
+    bar.style.width = '100%';
+    txt.textContent = 'מען אינסטאלירט… דרוק "Update" אין דעם פענצטער וואס עפנט זיך.';
+  } else {
+    const key = st === 'perm' ? 'perm' : (err || '').split(':')[0];
+    txt.textContent = UPDATE_ERRORS[key] || (/http_|Unable|timeout|resolve|connect|reset|failed to connect/i.test(err || '')
+      ? 'קיין פארבינדונג צו GitHub. קוק דעם אינטערנעט און פרוביר נאכאמאל.'
+      : 'דער אפדעיט האט נישט געקלאפט' + (err ? ` (${err})` : '') + '.');
+    btns.classList.remove('hidden');
+  }
+};
 
 /* ---------------- start ---------------- */
 if (!N) {

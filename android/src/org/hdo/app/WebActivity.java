@@ -99,6 +99,7 @@ public class WebActivity extends Activity {
 
             @Override public void onPageFinished(WebView v, String url) {
                 CookieManager.getInstance().flush();
+                embed(v, url);
                 if (getIntent().getBooleanExtra("capture", false)) capture(v, url);
                 String extra = getIntent().getStringExtra("js");
                 if (extra != null && !ranJs) { ranJs = true; v.evaluateJavascript(extra, null); }
@@ -145,6 +146,19 @@ public class WebActivity extends Activity {
             android.widget.Toast.makeText(this, "דו ביסט איינגעלאגט ✓", android.widget.Toast.LENGTH_SHORT).show();
             finish();
         });
+    }
+
+    /** Makes the site's pages feel built in: no site header bar, no floating chat bubble. */
+    static final String EMBED_JS = "(function(){var id='hdo-embed';if(document.getElementById(id))return;"
+            + "var s=document.createElement('style');s.id=id;s.textContent="
+            + "'header.MuiAppBar-root{display:none!important}main{padding-top:0!important}"
+            + ".intercom-lightweight-app,chat-widget,#chat-widget-wrapper,#chat-icon-skeleton{display:none!important}';"
+            + "(document.head||document.documentElement).appendChild(s);})()";
+
+    private void embed(WebView v, String url) {
+        Uri u = Uri.parse(url);
+        // keep the site's own messenger visible when we opened it on purpose
+        if ("app.hitdanoigen.com".equals(u.getHost()) && getIntent().getStringExtra("js") == null) v.evaluateJavascript(EMBED_JS, null);
     }
 
     static boolean isSite(String host) {

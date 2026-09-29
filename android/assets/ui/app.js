@@ -132,7 +132,7 @@ const I = {
   refresh: '<path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15"/>',
 };
 const icon = (n, cls = 'i') => `<svg class="${cls}" viewBox="0 0 24 24">${I[n]}</svg>`;
-const LOGO = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8b5cf6"/><stop offset="1" stop-color="#4f46e5"/></linearGradient></defs><rect width="512" height="512" rx="112" fill="url(#g)"/><path d="M76 256C150 146 362 146 436 256 362 366 150 366 76 256Z" fill="#fff"/><circle cx="256" cy="256" r="70" fill="#6d28d9"/><path d="M222 258l26 26 46-52" stroke="#fff" stroke-width="26" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>')}`;
+const LOGO = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="146.73 0 23.92 31.29"><path fill="#8b62ff" d="M165.271 9.345V6.87a6.871 6.871 0 1 0-13.745 0v2.886a11.95 11.95 0 0 0-4.796 9.572c0 6.595 5.365 11.96 11.961 11.96 6.594 0 11.961-5.366 11.961-11.96 0-4.167-2.142-7.842-5.381-9.984M154.104 6.87a4.27 4.27 0 0 1 1.257-3.037 4.298 4.298 0 0 1 7.006 1.394c.216.522.327 1.08.326 1.644v1.185a11.9 11.9 0 0 0-4.002-.69c-1.624 0-3.174.325-4.588.916v-1.41zm4.588 21.726c-5.112 0-9.268-4.158-9.268-9.268s4.158-9.268 9.268-9.268 9.268 4.158 9.268 9.268-4.158 9.268-9.268 9.268"/><path fill="#8b62ff" d="M156.73 13.964a2.87 2.87 0 0 1 1.683 2.082 2.87 2.87 0 0 1-.772 2.562 2.867 2.867 0 0 1-3.81.238 2.9 2.9 0 0 1-.846-1.089 5.74 5.74 0 0 0 .878 5.076 5.72 5.72 0 0 0 4.601 2.315 5.73 5.73 0 0 0 5.506-4.16 5.74 5.74 0 0 0-.734-4.73 5.73 5.73 0 0 0-6.507-2.296z"/></svg>')}`;
 
 /* ---------------- boot ---------------- */
 function boot() {
@@ -268,9 +268,8 @@ async function loadHome(quiet) {
 function doneToday() {
   const d = state.dash;
   if (!d) return null;
-  if (d.stats?.checkInCompleted) return true;
-  const u = d.dailyCheckIn?.updatedAt ? new Date(d.dailyCheckIn.updatedAt) : null;
-  return !!u && u.toDateString() === new Date().toDateString();
+  // the site's own flag (a new account has an "updated" date from signing up, which doesn't count)
+  return !!d.stats?.checkInCompleted;
 }
 
 let bubbleShown = false;
@@ -360,9 +359,18 @@ function renderHome() {
       <h3>${days >= 90 ? 'וואנט פון כבוד' : '90-טעג טשארט'}</h3>
       ${done ? `<div class="done-chip">${icon('check')} אפדעיטעד היינט${upd ? ' <span class="ltr">' + fmt12(upd) + '</span>' : ''}</div>`
         : '<p>ביסטו נאך אלץ ריין? אפדעיט דיין טשארט פאר היינט.</p>'}
-      <div class="btns">
-        <button class="btn ${done ? 'ghost' : ''}" id="bClean">${icon('check')} איך בין נאך אלץ ריין</button>
-        <button class="btn red" id="bFall">איך האב געהאט א דורכפאל</button>
+      <div class="ci-tiles">
+        <button class="ci-tile clean${done ? ' done' : ''}" id="bClean">
+          <span class="ci-ic">${done ? '✅' : '💪'}</span><b>איך בין נאך אלץ ריין</b><span>${done ? 'שוין אפדעיטעד – נאכאמאל?' : 'אפדעיט דעם טשארט'}</span>
+        </button>
+        <button class="ci-tile fall" id="bFall">
+          <span class="ci-ic">🌱</span><b>איך האב געהאט א דורכפאל</b><span>הייב אן פון דאס נייע</span>
+        </button>
+      </div>
+      <div class="ci-links">
+        <button id="ciDiary">📔 טאג-בוך</button>
+        <button id="ciChart">📊 טשארט</button>
+        <button id="ciRemind">🔔 רימיינדערס</button>
       </div>
     </section>
 
@@ -401,6 +409,9 @@ function renderHome() {
   $('#staffHome').onclick = () => N.openStaff();
   paintStaff();
   $('#bFall').onclick = () => setbackSheet();
+  $('#ciDiary').onclick = () => { state.chart.seg = 'diary'; go('chart'); };
+  $('#ciChart').onclick = () => { state.chart.seg = days >= 90 ? 'woh' : 'c90'; go('chart'); };
+  $('#ciRemind').onclick = () => { go('more'); setTimeout(() => $('#rOn')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 80); };
   $('#bWall') && ($('#bWall').onclick = () => { state.chart.seg = 'woh'; go('chart'); });
   $('#bWidget') && ($('#bWidget').onclick = () => N.pinWidget());
   $('#bBook') && ($('#bBook').onclick = () => N.openHandbook());
@@ -930,7 +941,7 @@ const SECTIONS = [
   { t: 'פלאנירונג', e: '📝', c: '#3b82f6', u: APP + '/planning' },
   { t: 'קאנעקשן', e: '💬', c: '#10b981', u: APP + '/connection' },
   { t: 'מיני-קורסן', e: '🎓', c: '#14b8a6', u: APP + '/mini-courses' },
-  { t: 'ווידעאס', e: '🎬', c: '#6366f1', u: APP + '/videos' },
+  { t: 'ווידעאס', e: '🎬', c: '#6366f1', u: APP + '/videos/categories' },
   { t: 'טולבאקס', e: '🧰', c: '#8b5cf6', u: APP + '/toolbox' },
   { t: 'פארום', e: '👥', c: '#f97316', go: () => go('forum') },
   { t: '90 טעג טשארט', e: '📊', c: '#a855f7', go: () => { state.chart.seg = 'c90'; go('chart'); } },
@@ -1068,10 +1079,16 @@ function checkUpdate() {
 async function maybeCheckUpdate() {
   let last = 0;
   try { last = +localStorage.getItem('updCheck') || 0; } catch {}
-  if (Date.now() - last < 12 * 3600_000) return;
+  if (Date.now() - last < 3 * 3600_000) return;
   try { localStorage.setItem('updCheck', String(Date.now())); } catch {}
   state.update = await checkUpdate();
   if (state.update.available && state.tab === 'home' && state.dash) renderHome();
+  let seen = '';
+  try { seen = localStorage.getItem('updSeen') || ''; } catch {}
+  if (state.update.available && seen !== state.update.latest && !$('#modal')) {
+    try { localStorage.setItem('updSeen', state.update.latest); } catch {}
+    updateSheet(false);
+  }
 }
 async function updateSheet(fresh) {
   if (fresh || !state.update) {
@@ -1084,7 +1101,8 @@ async function updateSheet(fresh) {
   if (u.error) { toast(u.error === 'no_releases' ? 'נישטא קיין אפדעיטס.' : 'קען נישט קוקן יעצט – פרוביר שפעטער'); return; }
   if (!u.available) { toast(`דו האסט די לעצטע ווערזשן (${u.current})`); return; }
   openModal(`
-    <h2>נייע ווערזשן ${esc(u.latest)}</h2>
+    <div class="upd-hero">🎉</div>
+    <h2>א נייע ווערזשן איז גרייט! (${esc(u.latest)})</h2>
     <p>דו האסט יעצט ${esc(u.current)}.</p>
     ${u.notes ? `<div class="note" style="white-space:pre-line;text-align:right">${esc(u.notes.slice(0, 1200))}</div>` : ''}
     <div class="btns"><button class="btn" id="uGo">${icon('download')} דאונלאוד און אינסטאלירן</button><button class="btn line" data-close>שפעטער</button></div>`);

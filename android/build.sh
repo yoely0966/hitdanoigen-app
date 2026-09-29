@@ -48,7 +48,7 @@ mkdir -p "$OUT/compiled" "$OUT/gen" "$OUT/classes" "$OUT/dex"
 if [ ! -f "$HERE/res/mipmap-xxxhdpi/ic_launcher.png" ]; then
   echo "== icons"
   mkdir -p "$OUT"
-  "$JAVA" "$(w "$HERE/tools/DrawIcon.java")" "$(w "$OUT/icon-512.png")"
+  "$JAVA" "$(w "$HERE/tools/DrawIcon.java")" "$(w "$OUT/icon-512.png")" "$(w "$HERE/tools/brand/apple-touch-icon.png")"
   "$JAVA" "$(w "$HERE/tools/IconGen.java")" "$(w "$OUT/icon-512.png")" "$(w "$HERE/res")"
 fi
 

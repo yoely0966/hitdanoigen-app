@@ -171,7 +171,7 @@ public class MainActivity extends Activity {
         ringBg.setColor(0x26FFFFFF);
         ring.setBackground(ringBg);
         android.widget.ImageView logo = new android.widget.ImageView(this);
-        logo.setImageResource(R.mipmap.ic_launcher);
+        logo.setImageResource(R.drawable.ic_logo);
         android.widget.FrameLayout.LayoutParams lp = new android.widget.FrameLayout.LayoutParams((int) (92 * dp), (int) (92 * dp), android.view.Gravity.CENTER);
         ring.addView(logo, lp);
         box.addView(ring, new android.widget.LinearLayout.LayoutParams((int) (136 * dp), (int) (136 * dp)));

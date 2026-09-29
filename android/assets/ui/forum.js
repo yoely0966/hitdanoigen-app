@@ -357,6 +357,54 @@ function bindAi(box) {
   box.querySelectorAll('[data-bot]').forEach((x) => (x.onclick = () => openBot(x.dataset.bot)));
 }
 
+/* ---------- profiles: tap a name or photo ---------- */
+const USER_Q = 'id username bio age gender relationshipStatus currentStreak forumPostCount messageCount createdAt isOnline lastSeenAt botType';
+const GENDER = { Male: 'מאן', Female: 'פרוי', male: 'מאן', female: 'פרוי', 1: 'מאן', 2: 'פרוי' };
+const REL = { Married: 'חתונה געהאט', Single: 'בחור / נישט חתונה געהאט', Divorced: 'געגט', Widowed: 'אלמן', Engaged: 'א חתן', 1: 'בחור', 2: 'חתונה געהאט' };
+
+/** who = { id } (live chat) or { username } (forum). */
+async function showProfile(who) {
+  openModal('<div class="spinner"></div>');
+  await chatMe().catch(() => null);
+  let u = null;
+  try {
+    if (who.id) u = (await gql(`query U($i:Int!){ user(id:$i){ ${USER_Q} } }`, { i: who.id })).user;
+    else if (who.username) u = (await gql(`query U($u:String!){ userByUsername(username:$u){ ${USER_Q} } }`, { u: who.username })).userByUsername;
+  } catch {}
+  if (!u) {
+    closeModal();
+    if (who.forumUrl) N.openWeb(who.forumUrl, who.username || 'פראפייל');
+    else toast('דער פראפייל איז נישט צוגענגליך');
+    return;
+  }
+  const me = u.id === forum.me;
+  const bot = u.botType;
+  const facts = [
+    u.currentStreak != null && !bot ? ['🔥', `${u.currentStreak} טעג ריין`] : null,
+    u.age ? ['🎂', `${u.age} יאר אלט`] : null,
+    GENDER[u.gender] ? ['👤', GENDER[u.gender]] : null,
+    REL[u.relationshipStatus] ? ['💍', REL[u.relationshipStatus]] : null,
+    u.forumPostCount ? ['📝', `${u.forumPostCount} מעלדונגען אויפ'ן פארום`] : null,
+    u.createdAt ? ['📅', `מיטגליד זינט ${fmtGreg(new Date(u.createdAt))}`] : null,
+  ].filter(Boolean);
+  const status = bot ? 'AI געהילף' : u.isOnline ? '🟢 אנליין יעצט' : u.lastSeenAt ? 'לעצט געזען ' + isoWhen(u.lastSeenAt, true) : '';
+  openModal(`
+    <div class="prof">
+      ${avatar('', u.username, 'wa-av prof-av', u.isOnline)}
+      <h2>${esc(u.username)} ${bot ? '<span class="ai-tag">AI</span>' : ''}</h2>
+      <div class="muted small">${esc(status)}</div>
+      ${u.bio ? `<p class="prof-bio">${esc(u.bio)}</p>` : ''}
+      ${facts.length ? `<div class="prof-facts">${facts.map(([e, t]) => `<div><span>${e}</span><span>${esc(t)}</span></div>`).join('')}</div>` : ''}
+      <div class="btns">
+        ${me ? '' : `<button class="btn" id="pfMsg">${icon('chat')} שיק א מעסעדזש</button>`}
+        ${u.forumPostCount && !bot ? '<button class="btn line" id="pfForum">🌐 פארום פראפייל</button>' : ''}
+        <button class="btn line" data-close>פארמאכן</button>
+      </div>
+    </div>`);
+  $('#pfMsg') && ($('#pfMsg').onclick = () => { closeModal(); if (forum.conv && other(forum.conv.c).id === u.id) return; startChatWith(u); });
+  $('#pfForum') && ($('#pfForum').onclick = () => { closeModal(); N.openWeb(who.forumUrl || `${SITE}/forum/profile?func=profile&username=${encodeURIComponent(u.username)}`, u.username); });
+}
+
 /** The live chat: its own screen, opened from the round button above "new topic". */
 function openLiveChats() {
   const el = document.createElement('div');
@@ -427,6 +475,7 @@ function drawConvs() {
 function convMenu(c) {
   const pinned = c.conversationToUser?.isPinned;
   actionSheet(other(c).username || 'טשעט', [
+    { icon: '👤', t: 'זע פראפייל', run: () => showProfile({ id: other(c).id }) },
     { icon: '📌', t: pinned ? 'אנפין' : 'פין אויבן', run: () => pinConv(c, !pinned) },
     { icon: '🗂️', t: 'ארכייוו דעם טשעט', s: 'ער קומט צוריק ווען עס קומט א נייע מעסעדזש', run: () => hideConv(c) },
   ]);
@@ -668,6 +717,8 @@ async function openConv(c) {
   const status = cv.bot ? 'AI געהילף · ענטפערט גלייך' : o.isOnline ? 'אנליין' : o.lastSeenAt ? 'לעצט געזען ' + isoWhen(o.lastSeenAt, true) : (o.currentStreak != null ? `🔥 ${o.currentStreak} טעג` : '');
   const el = chatScreen({ placeholder: 'שרייב א מעסעדזש…', title: o.username || 'טשעט', sub: esc(status), av: avatar('', o.username, 'wa-av sm', o.isOnline), menu: c.id ? () => convMenu(c) : null });
   cv.el = el;
+  el.querySelector('.wa-bar .wa-av')?.addEventListener('click', () => showProfile({ id: o.id }));
+  el.querySelector('.wa-bar .grow')?.addEventListener('click', () => showProfile({ id: o.id }));
   pushScreen(el, () => { clearInterval(cv.timer); clearInterval(cv.fast); if (forum.conv === cv) forum.conv = null; forum.convs && (forum.convs.at = 0); loadConvs(true).then(drawConvs).catch(() => {}); });
   el.querySelector('.wa-send').onclick = () => sendChat(cv);
   mentionHelper(el);
@@ -1124,6 +1175,7 @@ function parseThread(doc) {
       id: h.querySelector('a[name]')?.getAttribute('name'),
       when: h.querySelector('.kmsgdate')?.textContent.replace(/\s+/g, ' ').trim() || '',
       author: who?.textContent.trim() || '',
+      uid,
       avatar: t.querySelector('img.kavatar')?.getAttribute('src') || (uid ? `${SITE}/media/kunena/avatars/resized/size36/users/avatar${uid}.jpeg` : ''),
       streak: h.querySelector('.kmsg-current-streak-mobile')?.textContent.trim()
         || [...t.querySelectorAll('.kpost-userposts')].map((x) => x.textContent.trim()).find((x) => /איצטיגע/.test(x)) || '',
@@ -1250,7 +1302,7 @@ function drawThread(scrollBottom) {
     const mine = me && p.author.trim().toLowerCase() === me;
     const cont = p.author === lastAuthor;
     lastAuthor = p.author;
-    html += `<div class="msg ${mine ? 'out' : 'in'}${cont ? ' cont' : ''}" data-pid="${esc(p.id)}">
+    html += `<div class="msg ${mine ? 'out' : 'in'}${cont ? ' cont' : ''}" data-pid="${esc(p.id)}" data-author="${esc(p.author)}" data-uid="${esc(p.uid || '')}">
       ${!mine && !cont ? avatar(p.avatar, p.author, 'wa-av xs') : '<span class="wa-av xs ghost"></span>'}
       <div class="bub">
         ${!mine && !cont ? `<div class="who" style="color:${colorOf(p.author)}">${esc(p.author)}${p.streak ? `<span class="streak">${esc(p.streak.replace('איצטיגע שטרעקע:', '🔥'))}</span>` : ''}</div>` : ''}
@@ -1261,6 +1313,8 @@ function drawThread(scrollBottom) {
   box.innerHTML = html || '<div class="day-chip" style="margin-top:40px">נאך קיין מעלדונגען</div>';
   bindRich(box);
   box.querySelectorAll('[data-like]').forEach((b) => (b.onclick = () => likePost(b)));
+  box.querySelectorAll('.msg[data-author]').forEach((m) => m.querySelectorAll('.wa-av:not(.ghost), .who').forEach((x) => (x.onclick = () =>
+    showProfile({ username: m.dataset.author, forumUrl: m.dataset.uid ? `${SITE}/forum/profile?func=profile&userid=${m.dataset.uid}` : null }))));
   const older = box.querySelector('[data-older]');
   if (older) older.onclick = () => loadOlder(older);
   if (t.topic.jumpTo) {

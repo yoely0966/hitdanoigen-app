@@ -394,3 +394,45 @@ svg.i { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-widt
 .hero2 .next .bar { background: rgba(124,58,237,.15); height: 8px; margin-top: 6px; }
 .hero2 .next .bar i { background: linear-gradient(90deg, #ec4899, #7c3aed); margin-left: auto; }
 .hero2 .since { margin-top: 12px; font-size: 12.5px; opacity: .9; }
+
+/* ================= HitDanOigen brand ================= */
+:root { --accent: #8b62ff; --accent-2: #6e4bea; --accent-soft: #f1ecff; }
+@media (prefers-color-scheme: dark) { :root { --accent: #a58bff; --accent-2: #8b62ff; --accent-soft: #2a2342; } }
+.btn { background: #8b62ff; }
+.hero2 { background: linear-gradient(160deg, #a58bff 0%, #8b62ff 45%, #789fff 130%); }
+@media (prefers-color-scheme: dark) { .hero2 { background: linear-gradient(160deg, #6e4bea 0%, #4c33b8 60%, #3b5bd6 140%); } }
+#nav .fab { background: linear-gradient(150deg, #a58bff, #8b62ff); }
+.upd-hero { text-align: center; font-size: 52px; margin-top: 4px; }
+
+/* lighter counter card */
+.hero2 { padding: 14px 16px 14px; }
+.hero2 .blob.b1 { width: 130px; height: 130px; top: -50px; left: -40px; }
+.hero2 .blob.b2 { display: none; }
+.cheer { font-size: 13px; padding: 5px 12px; margin-bottom: 4px; }
+.ring-wrap { width: 150px; height: 150px; margin: 2px auto 8px; }
+.hero2 .days { font-size: 50px; }
+.hero2 .days-label { font-size: 13.5px; }
+.clock2 { margin-bottom: 10px; }
+.clock2 span { padding: 4px 9px; }
+.clock2 b { font-size: 14px; }
+.hero2 .next { padding: 8px 10px; border-radius: 16px; }
+.hero2 .next img { width: 38px; height: 38px; }
+.hero2 .next .t { font-size: 14px; }
+.hero2 .since { margin-top: 8px; font-size: 12px; }
+.home-top { padding-top: 10px; }
+.ht-name { font-size: 22px; }
+.me-ring { width: 58px; height: 58px; padding: 4px; }
+.me-ring b { font-size: 15px; }
+
+/* check-in: two tiles side by side + shortcuts */
+.ci-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.ci-tile { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: right; padding: 14px 12px; border-radius: 18px; min-height: 118px; }
+.ci-tile .ci-ic { font-size: 26px; margin-bottom: 4px; }
+.ci-tile b { font-size: 15px; line-height: 1.25; }
+.ci-tile span:last-child { font-size: 12px; opacity: .85; }
+.ci-tile.clean { background: linear-gradient(150deg, #a58bff, #8b62ff); color: #fff; box-shadow: 0 8px 18px rgba(139,98,255,.3); }
+.ci-tile.clean.done { background: var(--green-soft); color: var(--green); box-shadow: none; }
+.ci-tile.fall { background: var(--red-soft); color: var(--red); }
+.ci-tile:active { transform: scale(.97); }
+.ci-links { display: flex; gap: 8px; margin-top: 12px; }
+.ci-links button { flex: 1; padding: 9px 4px; border-radius: 12px; background: var(--bg); font-size: 13px; font-weight: 700; color: var(--ink); }

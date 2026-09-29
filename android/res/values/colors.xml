@@ -4,7 +4,8 @@
     <color name="card">#FFFFFF</color>
     <color name="ink">#1E1B2E</color>
     <color name="muted">#6B6880</color>
-    <color name="accent">#7C3AED</color>
-    <color name="w_top">#8B5CF6</color>
-    <color name="w_bottom">#4F46E5</color>
+    <color name="accent">#8B62FF</color>
+    <color name="w_top">#9B76FF</color>
+    <color name="w_bottom">#6E4BEA</color>
+    <color name="launcher_bg">#FFFFFF</color>
 </resources>

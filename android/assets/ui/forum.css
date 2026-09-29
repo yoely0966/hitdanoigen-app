@@ -273,3 +273,29 @@ body.wa #fsec { padding-bottom: 250px; }
 .wa-msgs .msg.out:not(.cont) .bub::before { left: auto; right: -8px; border-left: 0; border-right: 8px solid transparent; border-top-color: var(--wa-out); }
 .wa-msgs .msg.in .bub .react { right: auto; left: 8px; }
 .wa-msgs .msg.out .bub .react { left: auto; right: 8px; }
+
+/* ================= chats in HitDanOigen colors ================= */
+:root {
+  --wa-green: #7a52f0; --wa-accent: #8b62ff; --wa-badge: #8b62ff;
+  --wa-wall: #f4f1fb; --wa-out: #ebe4ff; --wa-bar: #8b62ff; --wa-bar-ink: #ffffff;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --wa-green: #a58bff; --wa-accent: #8b62ff; --wa-badge: #8b62ff; --wa-wall: #13111c; --wa-out: #3b2d74; --wa-bar: #2a2342; }
+}
+.wa-chips button.on, .wa-fmt.on { background: rgba(139,98,255,.14); }
+.day-chip.more, .few-groups a { color: var(--wa-green); }
+.bub .txt a, .mention { color: #6d4ae6; }
+.mention { background: rgba(139,98,255,.12); }
+.bub a.chip-link, .bub .txt a.chip-link { background: rgba(139,98,255,.10); color: #6d4ae6; }
+.ai-starters button { border-color: rgba(139,98,255,.35); }
+.cat-pick button.on { background: rgba(139,98,255,.08); }
+
+/* profile sheet */
+.prof { text-align: center; }
+.prof-av { width: 88px; height: 88px; margin: 6px auto 10px; }
+.prof-av i { font-size: 36px; }
+.prof h2 { margin: 0 0 2px; }
+.prof-bio { background: var(--bg); border-radius: 14px; padding: 10px 12px; margin: 12px 0 !important; color: var(--ink) !important; text-align: right !important; }
+.prof-facts { display: grid; gap: 8px; margin: 14px 0 16px; text-align: right; }
+.prof-facts div { display: flex; gap: 10px; align-items: center; background: var(--bg); border-radius: 12px; padding: 9px 12px; font-size: 14.5px; }
+.msg .wa-av:not(.ghost), .msg .who, .wa-bar .grow, .wa-bar .wa-av { cursor: pointer; }

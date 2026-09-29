@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- HitDanOigen logo (lock with an eye), traced from the site's own SVG -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp" android:height="96dp" android:viewportWidth="32" android:viewportHeight="32">
+    <group android:translateX="-142.73" android:translateY="0.355">
+        <path android:fillColor="#FF8B62FF" android:pathData="M165.271 9.345V6.87a6.871 6.871 0 1 0-13.745 0v2.886a11.95 11.95 0 0 0-4.796 9.572c0 6.595 5.365 11.96 11.961 11.96 6.594 0 11.961-5.366 11.961-11.96 0-4.167-2.142-7.842-5.381-9.984M154.104 6.87a4.27 4.27 0 0 1 1.257-3.037 4.298 4.298 0 0 1 7.006 1.394c.216.522.327 1.08.326 1.644v1.185a11.9 11.9 0 0 0-4.002-.69c-1.624 0-3.174.325-4.588.916v-1.41zm4.588 21.726c-5.112 0-9.268-4.158-9.268-9.268s4.158-9.268 9.268-9.268 9.268 4.158 9.268 9.268-4.158 9.268-9.268 9.268"/>
+        <path android:fillColor="#FF8B62FF" android:pathData="M156.73 13.964a2.87 2.87 0 0 1 1.683 2.082 2.87 2.87 0 0 1-.772 2.562 2.867 2.867 0 0 1-3.81.238 2.9 2.9 0 0 1-.846-1.089 5.74 5.74 0 0 0 .878 5.076 5.72 5.72 0 0 0 4.601 2.315 5.73 5.73 0 0 0 5.506-4.16 5.74 5.74 0 0 0-.734-4.73 5.73 5.73 0 0 0-6.507-2.296z"/>
+    </group>
+</vector>

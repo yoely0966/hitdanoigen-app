@@ -136,6 +136,7 @@ window.onResumeApp = () => {
   if (!N.isLoggedIn() || !$('#nav') || $('#nav').classList.contains('hidden')) return;
   if (state.tab === 'home' && Date.now() - state.homeAt > 5 * 60_000) loadHome(true);
   if (typeof refreshUnread === 'function') refreshUnread();
+  if (state.tab === 'home' && state.dash && $('#bBook')) $('#bBook').outerHTML = handbookCard(), $('#bBook') && ($('#bBook').onclick = () => N.openHandbook());
 };
 window.onBack = () => {
   if ($('#modal')) { closeModal(); return true; }
@@ -161,7 +162,7 @@ function showLogin(msg) {
         <div class="pw"><input id="lp" class="input" type="password" autocomplete="current-password" dir="ltr">
         <button id="eye" type="button" aria-label="ווייז">${icon('eye')}</button></div></label>
       <label class="check"><input id="lr" type="checkbox" checked>
-        <span>בלייב איינגעלאגט<br><span class="muted small">דער פאסווארט ווערט געהאלטן ענקריפטעד נאר אויף דעם פאון, כדי די אפ זאל זיך קענען אליין ריפרעשן.</span></span></label>
+        <span>בלייב איינגעלאגט<br><span class="muted small">דער פאסווארט ווערט געהאלטן ענקריפטעד נאר אויף דעם פאון, כדי די עפפ זאל זיך קענען אליין ריפרעשן.</span></span></label>
       <button id="lb" class="btn">לאג איין</button>
       <p class="center small" style="margin-top:18px"><a href="#" id="lf">פארגעסן פאסווארט? / נייע אקאונט</a></p>
     </div>`;
@@ -214,7 +215,8 @@ function showApp() {
     + `<button class="fab-slot" id="fab" aria-label="אפדעיט דעם טשארט"><span class="fab">${icon('check')}</span><span class="fab-t">אפדעיט</span></button>`
     + tab(TABS[2]) + tab(TABS[3]);
   nav.querySelectorAll('button[data-t]').forEach((b) => (b.onclick = () => go(b.dataset.t)));
-  $('#fab').onclick = () => updateSheet2();
+  $('#fab').onclick = () => { $('#fabBubble')?.remove(); updateSheet2(); };
+  paintFab();
   go(state.tab || 'home');
   maybeCheckUpdate();
 }
@@ -234,6 +236,7 @@ async function loadHome(quiet) {
       api('/dashboard'), api('/auth/user'), api('/dashboard/progress-dynamics?period=all-time'),
     ]);
     Object.assign(state, { dash, user, prog, homeAt: Date.now() });
+    paintFab();
     if (state.tab === 'home') renderHome();
   } catch (e) {
     if (e.message !== 'auth' && !quiet && state.tab === 'home') {
@@ -242,6 +245,36 @@ async function loadHome(quiet) {
       $('#retry').onclick = () => { view().innerHTML = '<div class="spinner"></div>'; loadHome(); };
     }
   }
+}
+
+/** Updated today? (server flag, or the last check-in happened on today's date here) */
+function doneToday() {
+  const d = state.dash;
+  if (!d) return null;
+  if (d.stats?.checkInCompleted) return true;
+  const u = d.dailyCheckIn?.updatedAt ? new Date(d.dailyCheckIn.updatedAt) : null;
+  return !!u && u.toDateString() === new Date().toDateString();
+}
+
+let bubbleShown = false;
+/** Green outline when updated today; otherwise a speech bubble above it (once per app start). */
+function paintFab() {
+  const fab = $('#fab');
+  if (!fab) return;
+  const done = doneToday();
+  if (done === null) return;
+  fab.classList.toggle('done', done);
+  fab.querySelector('.fab-t').textContent = done ? 'אפדעיטעד' : 'אפדעיט';
+  const old = $('#fabBubble');
+  if (done) { old?.remove(); return; }
+  if (bubbleShown || old) return;
+  bubbleShown = true;
+  const b = document.createElement('button');
+  b.id = 'fabBubble';
+  b.className = 'fab-bubble';
+  b.innerHTML = 'נאכנישט אפדעיטעד היינט <b>👇</b>';
+  b.onclick = () => { b.remove(); updateSheet2(); };
+  document.body.appendChild(b);
 }
 
 function streakStart() {
@@ -314,6 +347,12 @@ function renderHome() {
       ${lb.userList.slice(0, 5).map((u, i) => `<div class="lb-row"><span class="lb-n">${i + 1}</span><span class="grow">${esc(u.username)}</span><b class="num">${u.currentStreak}</b><span class="muted small">טעג</span></div>`).join('')}
     </section>` : ''}
 
+    ${handbookCard()}
+
+    <section class="card ai-card"><div class="row" style="margin-bottom:10px"><span style="font-size:22px">🤖</span>
+      <b class="grow">AI געהילף</b><span class="muted small">רעד יעצט, ענטפערט גלייך</span></div>
+      <div id="aiHome" class="ai-list"><div class="skel" style="height:64px"></div></div></section>
+
     ${!N.hasWidget() && N.canPinWidget() ? `
     <button class="card row" id="bWidget" style="width:100%;text-align:right">
       <span class="ic" style="width:42px;height:42px;border-radius:14px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center">${icon('widget')}</span>
@@ -325,9 +364,31 @@ function renderHome() {
   $('#bFall').onclick = () => setbackSheet();
   $('#bWall') && ($('#bWall').onclick = () => { state.chart.seg = 'woh'; go('chart'); });
   $('#bWidget') && ($('#bWidget').onclick = () => N.pinWidget());
+  $('#bBook') && ($('#bBook').onclick = () => N.openHandbook());
+  loadBots().then((bots) => {
+    const box = $('#aiHome');
+    if (!box) return;
+    if (!bots.length) { box.closest('.ai-card').remove(); return; }
+    box.innerHTML = aiButtons(bots);
+    bindAi(box);
+  });
   $('#updBanner') && ($('#updBanner').onclick = () => updateSheet());
   $('#bRefresh').onclick = (e) => { e.preventDefault(); toast('ריפרעשט...'); loadHome(); };
   startClock(start);
+}
+
+function handbookCard() {
+  let h = {};
+  try { h = JSON.parse(N.handbookInfo()); } catch {}
+  const sub = h.read && h.pages
+    ? `ווייטער לייענען – בלאט ${h.page} פון ${h.pages}${h.marks ? ` · ★ ${h.marks}` : ''}`
+    : 'עצות און חיזוק פונעם 90-טעג פראגראם – לייען אויפן פאון';
+  const pct = h.read && h.pages ? Math.round((h.page / h.pages) * 100) : 0;
+  return `<button class="card row" id="bBook" style="width:100%;text-align:right">
+      <span style="width:46px;height:46px;border-radius:14px;background:var(--accent-soft);display:grid;place-items:center;font-size:24px;flex:none">📖</span>
+      <span class="grow"><b>האנטבוך</b><br><span class="muted small">${esc(sub)}</span>
+        ${pct ? `<span class="bar" dir="rtl" style="background:var(--accent-soft);display:flex;justify-content:flex-start;margin-top:6px"><i style="width:${pct}%;background:var(--accent);margin-left:auto"></i></span>` : ''}</span>${icon('chev')}
+    </button>`;
 }
 
 let clockT = 0;
@@ -705,6 +766,7 @@ function renderJournal(inChart) {
 
 /* ---------------- more / settings ---------------- */
 const LINKS = [
+  { t: 'האנטבוך', s: 'לייען מיט בוקמארקס', i: 'book', u: 'handbook' },
   { t: 'פארום', s: 'רעדן מיט אנדערע, אנאנים', i: 'forum', u: SITE + '/forum' },
   { t: 'לייוו טשעט', s: 'כאפ א שמועס', i: 'chat', u: APP + '/chats' },
   { t: 'מאטיוואציע', s: 'וויזיע און ציל', i: 'star', u: APP + '/motivation' },
@@ -726,7 +788,7 @@ function renderMore() {
     <div class="section-title">סעקיוריטי</div>
     <section class="card">
       <div class="row"><span class="grow"><b>לאק מיט פינגערפרינט / פעיס</b><br><span class="muted small">${N.lockAvailable()
-        ? 'די אפ וועט פרעגן פאר דיין פינגערפרינט, פעיס אדער PIN יעדעס מאל ווען דו עפנסט זי'
+        ? 'די עפפ וועט פרעגן פאר דיין פינגערפרינט, פעיס אדער PIN יעדעס מאל ווען דו עפנסט זי'
         : 'שטעל קודם צו א פינגערפרינט אדער פעיס אין די פאון סעטינגס'}</span></span>
         <label class="switch"><input type="checkbox" id="lockOn" ${N.lockEnabled() ? 'checked' : ''} ${N.lockAvailable() || N.lockEnabled() ? '' : 'disabled'}><i></i></label></div>
     </section>
@@ -761,12 +823,12 @@ function renderMore() {
       <a class="item" href="mailto:gye.yid@hitdanoigen.com"><span class="ic">${icon('mail')}</span><span class="grow"><span class="t">אימעיל</span><div class="s"><span class="ltr">gye.yid@hitdanoigen.com</span></div></span></a>
     </div>
 
-    <div class="section-title">אפ</div>
+    <div class="section-title">עפפ</div>
     <div class="list">
       <button class="item" id="uCheck"><span class="ic">${icon('download')}</span><span class="grow"><span class="t">טשעק פאר אפדעיטס</span><div class="s" id="uState">ווערזשן ${esc(N.version())}</div></span>${icon('chev')}</button>
-      <button class="item" id="bOut"><span class="ic" style="background:var(--red-soft);color:var(--red)">${icon('out')}</span><span class="grow"><span class="t">לאג אויס</span><div class="s">${esc(N.username() || '')}</div></span></button>
+      <button class="item" id="bOut"><span class="ic" style="background:var(--red-soft);color:var(--red)">${icon('out')}</span><span class="grow"><span class="t">לאג ארויס</span><div class="s">${esc(N.username() || '')}</div></span></button>
     </div>
-    <p class="center muted small">א פריוואטע אפ פאר hitdanoigen.com · אלע דאטא בלייבט אויפ'ן וועבזייטל</p>`;
+    <p class="center muted small">א פריוואטע עפפ פאר hitdanoigen.com · אלע דאטא בלייבט אויפ'ן וועבזייטל</p>`;
 
   const save = () => {
     const ts = [...document.querySelectorAll('#rTimes input[type=time]')].map((x) => x.value).filter(Boolean);
@@ -789,12 +851,12 @@ function renderMore() {
   $('#rAdd') && ($('#rAdd').onclick = () => { const s2 = save(); s2.times.push('08:00'); N.setSettings(JSON.stringify(s2)); renderMore(); });
   $('#rTest').onclick = () => { N.testReminder(); toast('א טעסט איז געשיקט'); };
   $('#wPin') && ($('#wPin').onclick = () => N.pinWidget());
-  document.querySelectorAll('[data-l]').forEach((b) => (b.onclick = () => { const l = LINKS[+b.dataset.l]; N.openWeb(l.u, l.t); }));
+  document.querySelectorAll('[data-l]').forEach((b) => (b.onclick = () => { const l = LINKS[+b.dataset.l]; if (l.u === 'handbook') N.openHandbook(); else N.openWeb(l.u, l.t); }));
   $('#uCheck').onclick = () => updateSheet(true);
   $('#bOut').onclick = () => {
     openModal(`
-    <h2>לאג אויס?</h2><p>דו וועסט דארפן אריינשרייבן דיין פאסווארט נאכאמאל. רימיינדערס ווערן אפגעשטעלט.</p>
-    <div class="btns"><button class="btn red" id="bOutYes">לאג אויס</button><button class="btn line" data-close>צוריק</button></div>`);
+    <h2>לאג ארויס?</h2><p>דו וועסט דארפן אריינשרייבן דיין פאסווארט נאכאמאל. רימיינדערס ווערן אפגעשטעלט.</p>
+    <div class="btns"><button class="btn red" id="bOutYes">לאג ארויס</button><button class="btn line" data-close>צוריק</button></div>`);
     $('#bOutYes').onclick = () => {
       N.logout();
       Object.assign(state, { dash: null, user: null, prog: null, journal: null, tab: 'home', chart: { seg: 'c90', c90: null, woh: null, q: '' } });

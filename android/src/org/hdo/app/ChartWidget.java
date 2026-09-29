@@ -55,7 +55,7 @@ public class ChartWidget extends AppWidgetProvider {
             v.setTextViewText(R.id.w_days, "—");
             v.setTextViewText(R.id.w_label, "");
             v.setTextViewText(R.id.w_level, "");
-            v.setTextViewText(R.id.w_status, "עפן די אפ און לאג זיך איין");
+            v.setTextViewText(R.id.w_status, "עפן די עפפ און לאג זיך איין");
             v.setTextViewText(R.id.w_btn, "לאג איין");
             v.setOnClickPendingIntent(R.id.w_btn, PendingIntent.getActivity(ctx, 2, open, flags));
             mgr.updateAppWidget(ids, v);

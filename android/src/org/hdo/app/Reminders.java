@@ -89,7 +89,7 @@ public final class Reminders {
                 .setContentIntent(open)
                 .setAutoCancel(true)
                 .addAction(new Notification.Action.Builder(null, "✓ איך בין ריין", clean).build())
-                .addAction(new Notification.Action.Builder(null, "עפן די אפ", open).build());
+                .addAction(new Notification.Action.Builder(null, "עפן די עפפ", open).build());
         try {
             nm.notify(NOTIF_ID, b.build());
         } catch (SecurityException ignored) {

@@ -29,30 +29,64 @@ public final class Updater {
         }
     }
 
-    /** {current, latest, available, url, notes} - blocking, background thread only. */
+    /**
+     * {current, latest, available, url, notes} - blocking, background thread only.
+     * The newest tag comes from github.com/.../releases/latest (a redirect, no rate limit);
+     * the GitHub API (60 calls/hour per connection) is only asked for the release notes.
+     */
     static JSONObject check(Context c) {
         JSONObject out = new JSONObject();
         try {
             String cur = currentVersion(c);
             out.put("current", cur);
-            Api.Resp r = Api.call(c, "GET", "https://api.github.com/repos/" + REPO + "/releases/latest", null, false);
-            JSONObject rel = r.json();
-            if (!r.ok() || rel == null) { out.put("error", r.status == 404 ? "no_releases" : "offline"); return out; }
-            String latest = rel.optString("tag_name", "").replaceFirst("^[vV]", "");
-            String url = null;
-            JSONArray assets = rel.optJSONArray("assets");
-            for (int i = 0; assets != null && i < assets.length(); i++) {
-                JSONObject a = assets.getJSONObject(i);
-                if (a.optString("name").toLowerCase().endsWith(".apk")) { url = a.optString("browser_download_url"); break; }
+            String tag = latestTag();
+            if (tag == null) { out.put("error", "no_releases"); return out; }
+            String latest = tag.replaceFirst("^[vV]", "");
+            String url = "https://github.com/" + REPO + "/releases/download/" + tag + "/HitDaneOigen-" + latest + ".apk";
+            String notes = "";
+            try {
+                Api.Resp r = Api.call(c, "GET", "https://api.github.com/repos/" + REPO + "/releases/tags/" + tag, null, false);
+                JSONObject rel = r.json();
+                if (r.ok() && rel != null) {
+                    notes = rel.optString("body", "");
+                    JSONArray assets = rel.optJSONArray("assets");
+                    for (int i = 0; assets != null && i < assets.length(); i++) {
+                        JSONObject a = assets.getJSONObject(i);
+                        if (a.optString("name").toLowerCase().endsWith(".apk")) { url = a.optString("browser_download_url"); break; }
+                    }
+                }
+            } catch (Exception ignored) {
+                // no notes this time - the update itself still works
             }
             out.put("latest", latest);
-            out.put("notes", rel.optString("body", ""));
+            out.put("notes", notes);
             out.put("url", url);
-            out.put("available", url != null && newer(latest, cur));
+            out.put("available", newer(latest, cur));
         } catch (Exception e) {
             try { out.put("error", "offline"); } catch (Exception ignored) {}
         }
         return out;
+    }
+
+    /** "v1.7.3" from the redirect of /releases/latest, or null when there are no releases. */
+    private static String latestTag() throws Exception {
+        java.net.HttpURLConnection h = (java.net.HttpURLConnection)
+                new java.net.URL("https://github.com/" + REPO + "/releases/latest").openConnection();
+        h.setInstanceFollowRedirects(false);
+        h.setConnectTimeout(15_000);
+        h.setReadTimeout(15_000);
+        h.setRequestProperty("User-Agent", "HitDaneOigen-Updater");
+        try {
+            int code = h.getResponseCode();
+            String loc = h.getHeaderField("Location");
+            if (code >= 300 && code < 400 && loc != null && loc.contains("/releases/tag/")) {
+                return java.net.URLDecoder.decode(loc.substring(loc.lastIndexOf('/') + 1), "UTF-8");
+            }
+            if (code == 404 || (loc != null && loc.endsWith("/releases"))) return null;
+            throw new Exception("http_" + code);
+        } finally {
+            h.disconnect();
+        }
     }
 
     static boolean newer(String a, String b) {

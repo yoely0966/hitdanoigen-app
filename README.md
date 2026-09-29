@@ -16,6 +16,8 @@ It runs entirely on the phone and talks straight to the website – there is no 
 - **Big ✓ button** – update the 90-day chart / Wall of Honor (daily check-in) or report a fall.
 - **Chart** – 90-day chart, Wall of Honor and your diary as native lists; your own chart settings (public/private, streak on forum, forum link, reset).
 - **Chats** – the forum in a WhatsApp-style look (groups, topics, bubbles, replies with formatting, pin / subscribe / favorites) and the live chat (conversations, reactions, replies, @mentions).
+- **Handbook** – the site's handbook (downloaded from hitdanoigen.com on first open), shown one column at a time, remembers your place, bookmarks, go-to-page, zoom.
+- **AI helpers** – quick access to the site's Motivation and Planning AI chat helpers.
 - **Reminders** to update the chart (skips days already updated and Shabbos) and a **home-screen widget**.
 - **Fingerprint / face lock**, **in-app updates** from this repo's releases.
 

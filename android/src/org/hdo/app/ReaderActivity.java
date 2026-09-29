@@ -1,0 +1,694 @@
+package org.hdo.app;
+
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.Context;
+import android.content.Intent;
+import android.content.res.Configuration;
+import android.graphics.Bitmap;
+import android.graphics.Color;
+import android.graphics.Matrix;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.pdf.PdfRenderer;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.ParcelFileDescriptor;
+import android.text.InputType;
+import android.util.LruCache;
+import android.util.TypedValue;
+import android.view.GestureDetector;
+import android.view.Gravity;
+import android.view.MotionEvent;
+import android.view.ScaleGestureDetector;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.AbsListView;
+import android.widget.BaseAdapter;
+import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.ListView;
+import android.widget.ProgressBar;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+/**
+ * The site's handbook (hitdanoigen.com/images/handbook.pdf), downloaded once and read offline.
+ * The pages are printed in two columns, so by default each column is shown on its own, full
+ * width (right column first). Remembers where you are up to, and keeps your own bookmarks.
+ */
+public class ReaderActivity extends Activity {
+    static final String URL = Auth.SITE + "/images/handbook.pdf";
+    static final String TITLE = "האנטבוך";
+
+    private final Handler ui = new Handler(Looper.getMainLooper());
+    private final ExecutorService renderThread = Executors.newSingleThreadExecutor(); // PdfRenderer is single-threaded
+    private PdfRenderer pdf;
+    private ParcelFileDescriptor fd;
+    private int[][] sizes;               // page size in points
+    private float[][] cols;              // per page: {x0L, x1L, x0R, x1R, y0, y1} or null when one column
+    private final List<float[]> segs = new ArrayList<>(); // {page, x0, y0, x1, y1, part(0=whole,1=right,2=left)}
+    private boolean columns;
+    private LruCache<Integer, Bitmap> cache;
+    private ListView list;
+    private TextView pageLabel, markBtn, modeBtn, status;
+    private ProgressBar bar;
+    private FrameLayout body;
+    private boolean dark;
+    private int ink, accent, bg;
+    private int current = 0;             // index into segs
+
+    static File file(Context c) { return new File(c.getFilesDir(), "handbook.pdf"); }
+
+    @Override
+    protected void onCreate(Bundle b) {
+        super.onCreate(b);
+        dark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        bg = Color.parseColor(dark ? "#13111C" : "#EFEDF6");
+        ink = Color.parseColor(dark ? "#F1EFFA" : "#1E1B2E");
+        accent = Color.parseColor(dark ? "#A78BFA" : "#7C3AED");
+        columns = Store.prefs(this).getBoolean("hb_columns", true);
+        int maxKb = (int) (Runtime.getRuntime().maxMemory() / 1024);
+        cache = new LruCache<Integer, Bitmap>(maxKb / 5) {
+            @Override protected int sizeOf(Integer k, Bitmap v) { return v.getByteCount() / 1024; }
+        };
+
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(bg);
+
+        LinearLayout top = new LinearLayout(this);
+        top.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        top.setPadding(dp(4), dp(4), dp(4), dp(4));
+        top.setBackgroundColor(Color.parseColor(dark ? "#1E1B2B" : "#FFFFFF"));
+        TextView close = iconBtn("✕");
+        close.setOnClickListener(v -> finish());
+        TextView title = new TextView(this);
+        title.setText("📖 " + TITLE);
+        title.setTextColor(ink);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        title.setSingleLine(true);
+        pageLabel = new TextView(this);
+        pageLabel.setTextColor(accent);
+        pageLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        pageLabel.setTypeface(Typeface.DEFAULT_BOLD);
+        pageLabel.setPadding(dp(12), dp(6), dp(12), dp(6));
+        GradientDrawable pill = new GradientDrawable();
+        pill.setCornerRadius(dp(99));
+        pill.setColor(Color.parseColor(dark ? "#2A2342" : "#F1EBFF"));
+        pageLabel.setBackground(pill);
+        pageLabel.setOnClickListener(v -> askPage());
+        modeBtn = iconBtn(columns ? "📄" : "▥");
+        modeBtn.setOnClickListener(v -> toggleMode());
+        markBtn = iconBtn("☆");
+        markBtn.setOnClickListener(v -> toggleMark());
+        TextView listBtn = iconBtn("☰");
+        listBtn.setOnClickListener(v -> showMarks());
+        top.addView(close);
+        top.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        top.addView(pageLabel);
+        top.addView(modeBtn);
+        top.addView(markBtn);
+        top.addView(listBtn);
+        root.addView(top);
+
+        body = new FrameLayout(this);
+        root.addView(body, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        setContentView(root);
+        Edge.edgeToEdge(getWindow());
+        Edge.lightBars(getWindow(), !dark);
+        Edge.pad(root);
+
+        File f = file(this);
+        if (f.exists() && f.length() > 100_000) open(f);
+        else download(f);
+    }
+
+    // ---------- download once from the site ----------
+    private void download(File f) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER);
+        box.setPadding(dp(32), 0, dp(32), 0);
+        status = text("מען דאונלאודט דעם האנטבוך פון די וועבזייטל…", 16);
+        bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        bar.setMax(100);
+        bar.setProgressTintList(android.content.res.ColorStateList.valueOf(accent));
+        box.addView(status);
+        box.addView(bar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(24)));
+        body.addView(box);
+        new Thread(() -> {
+            File tmp = new File(getFilesDir(), "handbook.part");
+            try {
+                java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(URL).openConnection();
+                c.setConnectTimeout(20_000);
+                c.setReadTimeout(30_000);
+                if (c.getResponseCode() != 200) throw new Exception("http_" + c.getResponseCode());
+                long total = c.getContentLengthLong();
+                try (java.io.InputStream in = c.getInputStream(); java.io.OutputStream out = new java.io.FileOutputStream(tmp)) {
+                    byte[] buf = new byte[65536];
+                    long got = 0;
+                    int n;
+                    while ((n = in.read(buf)) > 0) {
+                        out.write(buf, 0, n);
+                        got += n;
+                        final int pct = total > 0 ? (int) (got * 100 / total) : 0;
+                        ui.post(() -> bar.setProgress(pct));
+                    }
+                }
+                c.disconnect();
+                if (!tmp.renameTo(f)) throw new Exception("save");
+                ui.post(() -> { body.removeAllViews(); open(f); });
+            } catch (Exception e) {
+                tmp.delete();
+                ui.post(() -> {
+                    status.setText("דער דאונלאוד האט נישט געקלאפט. קוק דעם אינטערנעט און פרוביר נאכאמאל.");
+                    TextView retry = text("פרוביר נאכאמאל", 16);
+                    retry.setTextColor(accent);
+                    retry.setPadding(0, dp(16), 0, 0);
+                    retry.setOnClickListener(v -> { body.removeAllViews(); download(f); });
+                    ((LinearLayout) status.getParent()).addView(retry);
+                });
+            }
+        }).start();
+    }
+
+    // ---------- open + find the two columns on every page ----------
+    private void open(File f) {
+        try {
+            fd = ParcelFileDescriptor.open(f, ParcelFileDescriptor.MODE_READ_ONLY);
+            pdf = new PdfRenderer(fd);
+        } catch (Exception e) {
+            f.delete();
+            Toast.makeText(this, "דער האנטבוך איז קאפוט – מען דאונלאודט נאכאמאל", Toast.LENGTH_LONG).show();
+            download(f);
+            return;
+        }
+        sizes = new int[pdf.getPageCount()][2];
+        for (int i = 0; i < sizes.length; i++) {
+            PdfRenderer.Page p = pdf.openPage(i);
+            sizes[i][0] = p.getWidth();
+            sizes[i][1] = p.getHeight();
+            p.close();
+        }
+        cols = loadColumns(f);
+        if (cols != null) { show(); return; }
+        // first time: measure the columns (a few seconds), then remember them
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER);
+        box.setPadding(dp(32), 0, dp(32), 0);
+        TextView t = text("מען גרייט צו דעם האנטבוך אין איין שפאלט…", 16);
+        ProgressBar pb = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        pb.setMax(sizes.length);
+        pb.setProgressTintList(android.content.res.ColorStateList.valueOf(accent));
+        box.addView(t);
+        box.addView(pb, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(24)));
+        body.addView(box);
+        renderThread.execute(() -> {
+            float[][] found = new float[sizes.length][];
+            for (int i = 0; i < sizes.length; i++) {
+                found[i] = analyze(i);
+                final int done = i + 1;
+                ui.post(() -> pb.setProgress(done));
+            }
+            saveColumns(f, found);
+            ui.post(() -> { cols = found; body.removeAllViews(); show(); });
+        });
+    }
+
+    /**
+     * Renders a small copy of the page and looks at where the ink is: the blank strip nearest the
+     * middle is the gutter between the columns; blank borders are cropped away.
+     * Returns {x0L, x1L, x0R, x1R, y0, y1} in page points, or null for a one-column page.
+     */
+    private float[] analyze(int page) {
+        int w = 600, h = Math.round(w * (float) sizes[page][1] / sizes[page][0]);
+        Bitmap bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        bmp.eraseColor(Color.WHITE);
+        synchronized (this) {
+            PdfRenderer.Page p = pdf.openPage(page);
+            p.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);
+            p.close();
+        }
+        int[] px = new int[w * h];
+        bmp.getPixels(px, 0, w, 0, 0, w, h);
+        bmp.recycle();
+        int[] colInk = new int[w], rowInk = new int[h];
+        for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
+            int c = px[y * w + x];
+            int lum = (Color.red(c) * 3 + Color.green(c) * 6 + Color.blue(c)) / 10;
+            if (lum < 200) { colInk[x]++; rowInk[y]++; }
+        }
+        int left = 0, right = w - 1, topY = 0, bottom = h - 1;
+        while (left < w && colInk[left] == 0) left++;
+        while (right > left && colInk[right] == 0) right--;
+        while (topY < h && rowInk[topY] == 0) topY++;
+        while (bottom > topY && rowInk[bottom] == 0) bottom--;
+        if (right - left < w / 4) return null;
+        // widest near-empty vertical strip in the middle band = the gutter
+        int from = left + (right - left) * 3 / 10, to = left + (right - left) * 7 / 10;
+        int bestStart = -1, bestLen = 0, runStart = -1;
+        int limit = Math.max(1, (bottom - topY) / 60); // a few stray dots allowed
+        for (int x = from; x <= to; x++) {
+            if (colInk[x] <= limit) {
+                if (runStart < 0) runStart = x;
+                if (x - runStart + 1 > bestLen) { bestLen = x - runStart + 1; bestStart = runStart; }
+            } else runStart = -1;
+        }
+        if (bestLen < 4) return null; // no clear gutter -> keep the whole page
+        float k = sizes[page][0] / (float) w, pad = 4 * k;
+        // cut exactly in the middle of the blank gutter, so no letters of the other column show
+        float mid = (bestStart + bestLen / 2f) * k;
+        return new float[]{
+                Math.max(0, left * k - pad), mid,                                             // left column
+                mid, Math.min(sizes[page][0], right * k + pad),                               // right column
+                Math.max(0, topY * k - pad), Math.min(sizes[page][1], bottom * k + pad)};
+    }
+
+    private float[][] loadColumns(File f) {
+        try {
+            String s = Store.prefs(this).getString("hb_cols2", null);
+            if (s == null) return null;
+            JSONObject o = new JSONObject(s);
+            if (o.optLong("size") != f.length()) return null;
+            JSONArray a = o.getJSONArray("pages");
+            if (a.length() != sizes.length) return null;
+            float[][] out = new float[a.length()][];
+            for (int i = 0; i < a.length(); i++) {
+                JSONArray r = a.optJSONArray(i);
+                if (r == null) continue;
+                out[i] = new float[r.length()];
+                for (int j = 0; j < r.length(); j++) out[i][j] = (float) r.getDouble(j);
+            }
+            return out;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private void saveColumns(File f, float[][] c) {
+        try {
+            JSONArray a = new JSONArray();
+            for (float[] r : c) {
+                if (r == null) { a.put(JSONObject.NULL); continue; }
+                JSONArray x = new JSONArray();
+                for (float v : r) x.put(Math.round(v * 10) / 10.0);
+                a.put(x);
+            }
+            Store.prefs(this).edit().putString("hb_cols2", new JSONObject().put("size", f.length()).put("pages", a).toString()).apply();
+        } catch (Exception ignored) {}
+    }
+
+    // ---------- the reading list ----------
+    private void buildSegs() {
+        segs.clear();
+        for (int i = 0; i < sizes.length; i++) {
+            float[] c = cols[i];
+            if (columns && c != null) {
+                segs.add(new float[]{i, c[2], c[4], c[3], c[5], 1}); // right column first (Yiddish)
+                segs.add(new float[]{i, c[0], c[4], c[1], c[5], 2});
+            } else {
+                segs.add(new float[]{i, 0, 0, sizes[i][0], sizes[i][1], 0});
+            }
+        }
+    }
+
+    private int firstSegOf(int page) {
+        for (int i = 0; i < segs.size(); i++) if ((int) segs.get(i)[0] == page) return i;
+        return 0;
+    }
+
+    private void show() {
+        buildSegs();
+        list = new ListView(this);
+        list.setDivider(null);
+        list.setBackgroundColor(bg);
+        list.setAdapter(new Pieces());
+        GestureDetector taps = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
+            @Override public boolean onDoubleTap(MotionEvent e) {
+                int pos = list.pointToPosition((int) e.getX(), (int) e.getY());
+                if (pos >= 0) zoom(pos);
+                return true;
+            }
+        });
+        list.setOnTouchListener((v, e) -> { taps.onTouchEvent(e); return false; });
+        list.setOnScrollListener(new AbsListView.OnScrollListener() {
+            @Override public void onScrollStateChanged(AbsListView v, int s) { if (s == SCROLL_STATE_IDLE) savePos(); }
+            @Override public void onScroll(AbsListView v, int first, int count, int total) {
+                if (first != current) { current = first; updateLabel(); }
+            }
+        });
+        body.addView(list);
+        // back to where the user stopped (page + which column + offset)
+        int page = Store.prefs(this).getInt("hb_page", 0), part = Store.prefs(this).getInt("hb_part", 0);
+        int off = Store.prefs(this).getInt("hb_off", 0);
+        page = Math.max(0, Math.min(page, sizes.length - 1));
+        int idx = firstSegOf(page);
+        if (part == 2 && idx + 1 < segs.size() && (int) segs.get(idx + 1)[0] == page) idx++;
+        current = idx;
+        list.setSelectionFromTop(idx, off);
+        updateLabel();
+        if (page > 0) Toast.makeText(this, "ווייטער פון בלאט " + (page + 1), Toast.LENGTH_SHORT).show();
+    }
+
+    private void toggleMode() {
+        if (list == null) return;
+        float[] cur = segs.get(Math.min(current, segs.size() - 1));
+        columns = !columns;
+        Store.prefs(this).edit().putBoolean("hb_columns", columns).apply();
+        modeBtn.setText(columns ? "📄" : "▥");
+        cache.evictAll();
+        buildSegs();
+        ((BaseAdapter) list.getAdapter()).notifyDataSetChanged();
+        int idx = firstSegOf((int) cur[0]);
+        list.setSelectionFromTop(idx, 0);
+        current = idx;
+        updateLabel();
+        Toast.makeText(this, columns ? "איין שפאלט אויפאמאל" : "גאנצע בלעטער", Toast.LENGTH_SHORT).show();
+    }
+
+    private void savePos() {
+        if (list == null || segs.isEmpty()) return;
+        int first = Math.min(list.getFirstVisiblePosition(), segs.size() - 1);
+        View v = list.getChildAt(0);
+        float[] s = segs.get(first);
+        Store.prefs(this).edit()
+                .putInt("hb_page", (int) s[0])
+                .putInt("hb_part", (int) s[5])
+                .putInt("hb_off", v == null ? 0 : v.getTop())
+                .putInt("hb_pages", sizes == null ? 0 : sizes.length)
+                .putLong("hb_at", System.currentTimeMillis())
+                .apply();
+    }
+
+    private int curPage() { return segs.isEmpty() ? 0 : (int) segs.get(Math.min(current, segs.size() - 1))[0]; }
+
+    private void updateLabel() {
+        if (sizes == null || segs.isEmpty()) return;
+        float[] s = segs.get(Math.min(current, segs.size() - 1));
+        String part = s[5] == 1 ? " · ①" : s[5] == 2 ? " · ②" : "";
+        pageLabel.setText("בלאט " + ((int) s[0] + 1) + " / " + sizes.length + part);
+        boolean marked = markIndex(curPage()) >= 0;
+        markBtn.setText(marked ? "★" : "☆");
+        markBtn.setTextColor(marked ? Color.parseColor("#F59E0B") : ink);
+    }
+
+    private final class Pieces extends BaseAdapter {
+        @Override public int getCount() { return segs.size(); }
+        @Override public Object getItem(int i) { return i; }
+        @Override public long getItemId(int i) { return i; }
+
+        @Override public View getView(int pos, View convert, ViewGroup parent) {
+            ImageView iv = convert instanceof ImageView ? (ImageView) convert : new ImageView(ReaderActivity.this);
+            float[] s = segs.get(pos);
+            int w = parent.getWidth() > 0 ? parent.getWidth() : getResources().getDisplayMetrics().widthPixels;
+            int h = Math.round(w * (s[4] - s[2]) / (s[3] - s[1]));
+            // a thin gap between the two columns of a page, a wider one between pages
+            boolean pageEnd = pos + 1 >= segs.size() || (int) segs.get(pos + 1)[0] != (int) s[0];
+            iv.setLayoutParams(new AbsListView.LayoutParams(w, h + dp(pageEnd ? 14 : 3)));
+            iv.setPadding(0, 0, 0, dp(pageEnd ? 14 : 3));
+            iv.setScaleType(ImageView.ScaleType.FIT_START);
+            iv.setTag(pos);
+            Bitmap cached = cache.get(pos);
+            if (cached != null) { iv.setImageBitmap(cached); return iv; }
+            iv.setImageDrawable(null);
+            final int width = Math.min(w, 1440);
+            renderThread.execute(() -> {
+                if (pdf == null || pos >= segs.size()) return;
+                Bitmap bmp = render(segs.get(pos), width);
+                if (bmp == null) return;
+                cache.put(pos, bmp);
+                ui.post(() -> { if (Integer.valueOf(pos).equals(iv.getTag())) iv.setImageBitmap(bmp); });
+            });
+            return iv;
+        }
+    }
+
+    /** Renders one piece {page, x0, y0, x1, y1} at the given pixel width (render thread). */
+    private Bitmap render(float[] s, int width) {
+        try {
+            float sw = s[3] - s[1], sh = s[4] - s[2];
+            float scale = width / sw;
+            int height = Math.max(1, Math.round(sh * scale));
+            Bitmap bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            bmp.eraseColor(Color.WHITE);
+            Matrix m = new Matrix();
+            m.postTranslate(-s[1], -s[2]);
+            m.postScale(scale, scale);
+            synchronized (this) {
+                PdfRenderer.Page p = pdf.openPage((int) s[0]);
+                p.render(bmp, null, m, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);
+                p.close();
+            }
+            return bmp;
+        } catch (Throwable e) {
+            return null;
+        }
+    }
+
+    // ---------- zoom one piece (double tap) ----------
+    private void zoom(int pos) {
+        FrameLayout layer = new FrameLayout(this);
+        layer.setBackgroundColor(Color.BLACK);
+        ZoomView z = new ZoomView(this);
+        layer.addView(z);
+        TextView x = iconBtn("✕");
+        x.setTextColor(Color.WHITE);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP | Gravity.START);
+        lp.setMargins(dp(8), dp(8), dp(8), dp(8));
+        layer.addView(x, lp);
+        x.setOnClickListener(v -> body.removeView(layer));
+        body.addView(layer);
+        int w = Math.min(getResources().getDisplayMetrics().widthPixels * 2, 2400);
+        float[] s = segs.get(pos);
+        renderThread.execute(() -> {
+            Bitmap bmp = render(s, w);
+            ui.post(() -> { if (bmp != null) z.setBitmap(bmp); });
+        });
+    }
+
+    /** Pinch-zoom / pan / double-tap image. */
+    private static final class ZoomView extends ImageView {
+        private final Matrix m = new Matrix();
+        private final ScaleGestureDetector scale;
+        private final GestureDetector gestures;
+        private float base = 1f;
+
+        ZoomView(Context c) {
+            super(c);
+            setScaleType(ScaleType.MATRIX);
+            scale = new ScaleGestureDetector(c, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                @Override public boolean onScale(ScaleGestureDetector d) {
+                    float cur = current();
+                    float f = Math.max(base / cur, Math.min(d.getScaleFactor(), base * 6 / cur));
+                    m.postScale(f, f, d.getFocusX(), d.getFocusY());
+                    setImageMatrix(m);
+                    return true;
+                }
+            });
+            gestures = new GestureDetector(c, new GestureDetector.SimpleOnGestureListener() {
+                @Override public boolean onScroll(MotionEvent a, MotionEvent b, float dx, float dy) {
+                    m.postTranslate(-dx, -dy);
+                    setImageMatrix(m);
+                    return true;
+                }
+                @Override public boolean onDoubleTap(MotionEvent e) {
+                    if (current() > base * 1.2f) fit();
+                    else { m.postScale(2.5f, 2.5f, e.getX(), e.getY()); setImageMatrix(m); }
+                    return true;
+                }
+            });
+        }
+
+        void setBitmap(Bitmap b) { setImageBitmap(b); post(this::fit); }
+
+        private float current() { float[] v = new float[9]; m.getValues(v); return v[Matrix.MSCALE_X]; }
+
+        private void fit() {
+            if (getDrawable() == null) return;
+            float dw = getDrawable().getIntrinsicWidth(), dh = getDrawable().getIntrinsicHeight();
+            base = getWidth() / dw; // fill the width, scroll down
+            m.reset();
+            m.postScale(base, base);
+            if (dh * base < getHeight()) m.postTranslate(0, (getHeight() - dh * base) / 2);
+            setImageMatrix(m);
+        }
+
+        @Override public boolean onTouchEvent(MotionEvent e) {
+            scale.onTouchEvent(e);
+            gestures.onTouchEvent(e);
+            return true;
+        }
+    }
+
+    // ---------- bookmarks (by page) ----------
+    private JSONArray marks() {
+        try { return new JSONArray(Store.prefs(this).getString("hb_marks", "[]")); }
+        catch (Exception e) { return new JSONArray(); }
+    }
+
+    private void saveMarks(JSONArray a) { Store.prefs(this).edit().putString("hb_marks", a.toString()).apply(); }
+
+    private int markIndex(int page) {
+        JSONArray a = marks();
+        for (int i = 0; i < a.length(); i++) if (a.optJSONObject(i).optInt("p") == page) return i;
+        return -1;
+    }
+
+    private void toggleMark() {
+        if (sizes == null) return;
+        int page = curPage();
+        int at = markIndex(page);
+        if (at >= 0) {
+            JSONArray a = marks();
+            a.remove(at);
+            saveMarks(a);
+            updateLabel();
+            Toast.makeText(this, "דער בוקמארק איז אראפגענומען", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        EditText name = new EditText(this);
+        name.setHint("בלאט " + (page + 1));
+        name.setTextDirection(View.TEXT_DIRECTION_ANY_RTL);
+        new AlertDialog.Builder(this)
+                .setTitle("☆ בוקמארק אויף בלאט " + (page + 1))
+                .setMessage("א נאמען (ווען דו ווילסט)")
+                .setView(name)
+                .setPositiveButton("היט אפ", (d, w) -> {
+                    try {
+                        JSONArray a = marks();
+                        a.put(new JSONObject().put("p", page).put("name", name.getText().toString().trim()).put("at", System.currentTimeMillis()));
+                        saveMarks(a);
+                        updateLabel();
+                        Toast.makeText(this, "★ בוקמארק געהיטן", Toast.LENGTH_SHORT).show();
+                    } catch (Exception ignored) {}
+                })
+                .setNegativeButton("אפזאגן", null)
+                .show();
+    }
+
+    private void showMarks() {
+        JSONArray a = marks();
+        int last = Store.prefs(this).getInt("hb_page", 0);
+        String[] items = new String[a.length() + 1];
+        items[0] = "📍 וואו איך האלט: בלאט " + (last + 1);
+        int[] pages = new int[a.length() + 1];
+        pages[0] = last;
+        for (int i = 0; i < a.length(); i++) {
+            JSONObject o = a.optJSONObject(i);
+            pages[i + 1] = o.optInt("p");
+            String n = o.optString("name", "");
+            items[i + 1] = "★ בלאט " + (o.optInt("p") + 1) + (n.isEmpty() ? "" : " – " + n);
+        }
+        AlertDialog d = new AlertDialog.Builder(this)
+                .setTitle(a.length() == 0 ? "נאך קיין בוקמארקס (דרוק ☆)" : "בוקמארקס")
+                .setItems(items, (dlg, i) -> goTo(pages[i]))
+                .setNegativeButton("פארמאכן", null)
+                .create();
+        d.setOnShowListener(x -> d.getListView().setOnItemLongClickListener((parent, view, i, id) -> {
+            if (i == 0) return false;
+            JSONArray all = marks();
+            all.remove(i - 1);
+            saveMarks(all);
+            d.dismiss();
+            updateLabel();
+            Toast.makeText(this, "דער בוקמארק איז אראפגענומען", Toast.LENGTH_SHORT).show();
+            return true;
+        }));
+        d.show();
+    }
+
+    private void askPage() {
+        if (sizes == null) return;
+        EditText in = new EditText(this);
+        in.setInputType(InputType.TYPE_CLASS_NUMBER);
+        in.setHint("1 – " + sizes.length);
+        new AlertDialog.Builder(this)
+                .setTitle("גיי צו בלאט")
+                .setView(in)
+                .setPositiveButton("גיי", (d, w) -> {
+                    try { goTo(Integer.parseInt(in.getText().toString().trim()) - 1); } catch (Exception ignored) {}
+                })
+                .setNegativeButton("אפזאגן", null)
+                .show();
+    }
+
+    private void goTo(int page) {
+        if (list == null) return;
+        page = Math.max(0, Math.min(page, sizes.length - 1));
+        int idx = firstSegOf(page);
+        list.setSelectionFromTop(idx, 0);
+        current = idx;
+        updateLabel();
+        savePos();
+    }
+
+    // ---------- lifecycle ----------
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (AppLock.needed(this)) {
+            startActivity(new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            finish();
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        savePos();
+        if (!AppLock.needed(this)) AppLock.lastSeen = System.currentTimeMillis();
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (body.getChildCount() > 1) { body.removeViewAt(body.getChildCount() - 1); return; } // close zoom
+        super.onBackPressed();
+    }
+
+    @Override
+    protected void onDestroy() {
+        renderThread.shutdownNow();
+        try { if (pdf != null) pdf.close(); if (fd != null) fd.close(); } catch (Exception ignored) {}
+        pdf = null;
+        super.onDestroy();
+    }
+
+    // ---------- small helpers ----------
+    private TextView iconBtn(String s) {
+        TextView t = new TextView(this);
+        t.setText(s);
+        t.setTextColor(ink);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
+        t.setGravity(Gravity.CENTER);
+        t.setLayoutParams(new LinearLayout.LayoutParams(dp(42), dp(46)));
+        return t;
+    }
+
+    private TextView text(String s, int sp) {
+        TextView t = new TextView(this);
+        t.setText(s);
+        t.setTextColor(ink);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
+        t.setGravity(Gravity.CENTER);
+        t.setPadding(0, 0, 0, dp(14));
+        return t;
+    }
+
+    private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
+}

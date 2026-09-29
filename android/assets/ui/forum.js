@@ -244,11 +244,13 @@ function renderForum() {
     </div>
     <div class="wa-search">${icon('search')}<input id="fq" placeholder="זוך..." value="${esc(forum.q)}" dir="auto"></div>
     <div id="fsec"><div class="spinner"></div></div>
+    <button class="wa-fab2 ai" id="fAi" aria-label="AI געהילף"><span style="font-size:19px">🤖</span><span class="lbl">AI געהילף</span></button>
     <button class="wa-fab2" id="fLive" aria-label="לייוו טשעט">${icon('chat')}<span class="lbl">לייוו טשעט</span>${forum.unread ? `<span class="wa-badge fabb">${forum.unread > 99 ? '99+' : forum.unread}</span>` : ''}</button>
     <button class="wa-fab" id="fNew" aria-label="נייע טעמע">${icon('pen')}</button>`;
   document.querySelectorAll('.wa-tabs button').forEach((b) => (b.onclick = () => { forum.section = b.dataset.s; forum.q = ''; renderForum(); }));
   $('#fq').oninput = (e) => { forum.q = e.target.value; drawSection(); };
   $('#fLive').onclick = () => openLiveChats();
+  $('#fAi').onclick = () => aiSheet();
   $('#fNew').onclick = () => newTopicSheet();
   $('#fRef').onclick = () => { forum.lists = {}; forum.cats = null; forum.convs = null; renderForum(); };
   loadSection();
@@ -292,9 +294,55 @@ async function loadConvs(force) {
     gql('query O($l:Int!){ userListConnection(isOnline:true, first:$l){ edges{ node{ id username currentStreak } } } }', { l: 30 }).catch(() => null),
   ]);
   forum.convs = { rows: c.myConversations || [], at: Date.now() };
-  forum.online = (o?.userListConnection?.edges || []).map((e) => e.node).filter((u) => u.id !== forum.me);
+  await loadBots();
+  forum.online = (o?.userListConnection?.edges || []).map((e) => e.node).filter((u) => u.id !== forum.me && !isBot(u));
   forum.unread = forum.convs.rows.reduce((n, r) => n + (r.unreadMessageCount || 0), 0);
   setNavBadge(forum.unread);
+}
+
+/* ---------- AI helpers: the site's chat bots ---------- */
+const BOT_INFO = {
+  Motivation: { icon: '🤖', desc: 'חיזוק און מאטיוואציע ווען דו דארפסט עס', starters: ['גיב מיר חיזוק', 'איך האב א שווערן טאג', 'איך האב א שטארקן גלוסט יעצט', 'פארוואס איז עס ווערט צו קעמפן?'] },
+  Planning: { icon: '🗺️', desc: 'מאך א פלאן, ציל און שריט פאר שריט', starters: ['העלף מיר מאכן א פלאן', 'וואס קען איך טון היינט?', 'ווי אזוי פארמייד איך שווערע מאמענטן?', 'איך וויל שטעלן א ציל'] },
+};
+async function loadBots() {
+  if (forum.bots) return forum.bots;
+  try {
+    const d = await gql('query B($l:Int!){ userListConnection(botsOnly:true, first:$l){ edges{ node{ id username botType isOnline } } } }', { l: 10 });
+    forum.bots = (d.userListConnection?.edges || []).map((e) => e.node);
+  } catch { forum.bots = []; }
+  return forum.bots;
+}
+const isBot = (u) => !!(u && forum.bots && forum.bots.some((b) => b.id === u.id));
+const botOf = (u) => (u && forum.bots ? forum.bots.find((b) => b.id === u.id) : null);
+
+/** Big friendly AI buttons (Home card and the top of the live chat). */
+function aiButtons(bots) {
+  return bots.map((b) => {
+    const i = BOT_INFO[b.botType] || { icon: '🤖', desc: '' };
+    return `<button class="ai-btn" data-bot="${b.id}"><span class="ai-ic">${i.icon}</span>
+      <span class="grow"><b>${esc(b.username)} <span class="ai-tag">AI</span></b><span class="ai-d">${esc(i.desc)}</span></span>${icon('chev')}</button>`;
+  }).join('');
+}
+async function openBot(id) {
+  await chatMe().catch(() => null);
+  const bots = await loadBots();
+  const b = bots.find((x) => String(x.id) === String(id));
+  if (b) startChatWith(b);
+  else toast('דער AI געהילף איז יעצט נישט צוגענגליך');
+}
+/** Sheet with the AI helpers (from the Chats tab button). */
+async function aiSheet() {
+  openModal('<h2>🤖 AI געהילף</h2><div class="spinner"></div>');
+  await chatMe().catch(() => null);
+  const bots = await loadBots();
+  if (!bots.length) { closeModal(); toast('דער AI געהילף איז יעצט נישט צוגענגליך'); return; }
+  openModal(`<h2>🤖 AI געהילף</h2><p>רעד יעצט – ער ענטפערט גלייך</p><div class="ai-list" style="padding:0">${aiButtons(bots)}</div>`);
+  document.querySelectorAll('#modal [data-bot]').forEach((x) => (x.onclick = () => { closeModal(); openBot(x.dataset.bot); }));
+}
+
+function bindAi(box) {
+  box.querySelectorAll('[data-bot]').forEach((x) => (x.onclick = () => openBot(x.dataset.bot)));
 }
 
 /** The live chat: its own screen, opened from the round button above "new topic". */
@@ -339,7 +387,9 @@ function drawConvs() {
     .sort((a, b) => (b.conversationToUser?.isPinned ? 1 : 0) - (a.conversationToUser?.isPinned ? 1 : 0)
       || new Date(b.lastMessage?.createdAt || 0) - new Date(a.lastMessage?.createdAt || 0));
   const onl = forum.online;
+  const bots = (forum.bots || []);
   box.innerHTML = `
+    ${bots.length && !q ? `<div class="wa-online-t">🤖 AI געהילפן</div><div class="ai-list">${aiButtons(bots)}</div>` : ''}
     ${onl.length && !q ? `<div class="wa-online-t">אנליין יעצט · ${onl.length}</div><div class="wa-online">${onl.map((u, i) =>
       `<button data-u="${i}">${avatar('', u.username, 'wa-av', true)}<span>${esc(u.username)}</span></button>`).join('')}</div>` : ''}
     ${rows.length ? rows.map((c) => {
@@ -359,6 +409,7 @@ function drawConvs() {
     onLongPress(b, () => convMenu(c));
   });
   box.querySelectorAll('[data-u]').forEach((b) => (b.onclick = () => startChatWith(onl[+b.dataset.u])));
+  bindAi(box);
 }
 
 function convMenu(c) {
@@ -531,17 +582,24 @@ async function startChatWith(user) {
 async function openConv(c) {
   await chatMe().catch(() => null);
   const o = other(c);
-  const cv = { c, items: [], prevCursor: null, hasPrev: false, reply: null, timer: 0, sending: false };
+  await loadBots();
+  const cv = { c, items: [], prevCursor: null, hasPrev: false, reply: null, timer: 0, sending: false, bot: botOf(other(c)), waiting: 0 };
   forum.conv = cv;
-  const status = o.isOnline ? 'אנליין' : o.lastSeenAt ? 'לעצט געזען ' + isoWhen(o.lastSeenAt, true) : (o.currentStreak != null ? `🔥 ${o.currentStreak} טעג` : '');
+  const status = cv.bot ? 'AI געהילף · ענטפערט גלייך' : o.isOnline ? 'אנליין' : o.lastSeenAt ? 'לעצט געזען ' + isoWhen(o.lastSeenAt, true) : (o.currentStreak != null ? `🔥 ${o.currentStreak} טעג` : '');
   const el = chatScreen({ placeholder: 'שרייב א מעסעדזש…', title: o.username || 'טשעט', sub: esc(status), av: avatar('', o.username, 'wa-av sm', o.isOnline), menu: c.id ? () => convMenu(c) : null });
   cv.el = el;
-  pushScreen(el, () => { clearInterval(cv.timer); if (forum.conv === cv) forum.conv = null; forum.convs && (forum.convs.at = 0); loadConvs(true).then(drawConvs).catch(() => {}); });
+  pushScreen(el, () => { clearInterval(cv.timer); clearInterval(cv.fast); if (forum.conv === cv) forum.conv = null; forum.convs && (forum.convs.at = 0); loadConvs(true).then(drawConvs).catch(() => {}); });
   el.querySelector('.wa-send').onclick = () => sendChat(cv);
   mentionHelper(el);
   el.querySelector('[data-unreply]').onclick = () => setReply(cv, null);
   if (!c.canCommunicate && c.canCommunicate === false) el.querySelector('.wa-compose').innerHTML = '<div class="wa-locked">מען קען נישט שרייבן אין דעם טשעט</div>';
-  if (!c.id) { el.querySelector('.wa-msgs').innerHTML = '<div class="day-chip" style="margin-top:40px">שרייב די ערשטע מעסעדזש 👋</div>'; return; }
+  if (cv.bot) {
+    const note = document.createElement('div');
+    note.className = 'ai-note';
+    note.textContent = '🤖 דאס איז א AI געהילף – ער קען אמאל מאכן א טעות. ביי א דרינגענדע זאך רוף דעם האטליין.';
+    el.querySelector('.wa-compose').before(note);
+  }
+  if (!c.id) { drawChat(cv, true); return; }
   try {
     await fetchMsgs(cv, false);
     drawChat(cv, true);
@@ -571,7 +629,7 @@ async function pollChat(cv) {
     let changed = false;
     fresh.forEach((m) => {
       const k = known.get(m.id);
-      if (!k) { cv.items.push(m); changed = true; }
+      if (!k) { cv.items.push(m); changed = true; if (m.authorId !== forum.me) cv.waiting = 0; }
       else if (k.reaction !== m.reaction || k.isViewed !== m.isViewed || k.state !== m.state || k.body !== m.body) { Object.assign(k, m); changed = true; }
     });
     if (changed && forum.conv === cv) {
@@ -609,7 +667,20 @@ function drawChat(cv, scrollBottom) {
         ${m.reaction ? `<span class="react">${reactionEmoji(m.reaction)}</span>` : ''}
       </div></div>`;
   });
+  if (cv.waiting) html += '<div class="msg in"><div class="bub typing"><i></i><i></i><i></i></div></div>';
+  const info = cv.bot ? BOT_INFO[cv.bot.botType] : null;
+  if (info && !cv.items.length) {
+    html = `<div class="ai-hello"><div class="ai-big">${info.icon}</div><b>${esc(cv.bot.username)}</b><p>${esc(info.desc)}</p>
+      <div class="ai-starters">${info.starters.map((t) => `<button data-start="${esc(t)}">${esc(t)}</button>`).join('')}</div></div>`;
+  } else if (info) {
+    html += `<div class="ai-starters inline">${info.starters.slice(0, 3).map((t) => `<button data-start="${esc(t)}">${esc(t)}</button>`).join('')}</div>`;
+  }
   box.innerHTML = html || '<div class="day-chip" style="margin-top:40px">שרייב די ערשטע מעסעדזש 👋</div>';
+  box.querySelectorAll('[data-start]').forEach((b) => (b.onclick = () => {
+    const ta = cv.el.querySelector('textarea');
+    ta.value = b.dataset.start;
+    sendChat(cv);
+  }));
   bindRich(box);
   box.querySelectorAll('[data-m]').forEach((el) => {
     const m = cv.items.find((x) => String(x.id) === el.dataset.m);
@@ -689,6 +760,14 @@ async function sendChat(cv) {
     toast(e.message === 'offline' ? 'קיין אינטערנעט – נישט געשיקט' : 'נישט געשיקט. פרוביר נאכאמאל.');
   }
   cv.sending = false;
+  if (cv.bot) {
+    cv.waiting = Date.now();
+    clearInterval(cv.fast);
+    cv.fast = setInterval(() => {
+      if (!cv.waiting || Date.now() - cv.waiting > 90_000 || forum.conv !== cv) { cv.waiting = 0; clearInterval(cv.fast); drawChat(cv, false); return; }
+      pollChat(cv);
+    }, 2000);
+  }
   drawChat(cv, true);
 }
 

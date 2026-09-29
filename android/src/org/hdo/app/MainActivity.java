@@ -177,7 +177,7 @@ public class MainActivity extends Activity {
         android.widget.TextView t = coverText("היט דיינע אויגן", 26, true, 0xFFFFFFFF);
         t.setPadding(0, (int) (22 * dp), 0, (int) (6 * dp));
         box.addView(t, new android.widget.LinearLayout.LayoutParams(-1, -2));
-        android.widget.TextView sub = coverText("🔒  די אפ איז געלאקט", 15, false, 0xD9FFFFFF);
+        android.widget.TextView sub = coverText("🔒  די עפפ איז געלאקט", 15, false, 0xD9FFFFFF);
         sub.setPadding(0, 0, 0, (int) (36 * dp));
         box.addView(sub, new android.widget.LinearLayout.LayoutParams(-1, -2));
 
@@ -324,6 +324,24 @@ public class MainActivity extends Activity {
                     js("window.onLockSet(" + AppLock.enabled(MainActivity.this) + "," + ok + ")");
                 });
             });
+        }
+
+        @JavascriptInterface public void openHandbook() {
+            runOnUiThread(() -> startActivity(new Intent(MainActivity.this, ReaderActivity.class)));
+        }
+
+        /** {downloaded, page (1-based), pages, marks} for the "continue reading" card. */
+        @JavascriptInterface public String handbookInfo() {
+            android.content.SharedPreferences sp = Store.prefs(MainActivity.this);
+            try {
+                return new JSONObject()
+                        .put("downloaded", ReaderActivity.file(MainActivity.this).exists())
+                        .put("page", sp.getInt("hb_page", 0) + 1)
+                        .put("pages", sp.getInt("hb_pages", 0))
+                        .put("marks", new org.json.JSONArray(sp.getString("hb_marks", "[]")).length())
+                        .put("read", sp.contains("hb_at"))
+                        .toString();
+            } catch (Exception e) { return "{}"; }
         }
 
         @JavascriptInterface public String takeAction() {

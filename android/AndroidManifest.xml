@@ -43,6 +43,12 @@
             android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|uiMode" />
 
+        <!-- the site's handbook, read offline with bookmarks -->
+        <activity
+            android:name=".ReaderActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode" />
+
         <!-- small "are you still clean today?" dialog used by the widget and reminders -->
         <activity
             android:name=".CheckInActivity"

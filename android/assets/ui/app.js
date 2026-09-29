@@ -64,6 +64,17 @@ const errText = (e) => (e && e.message === 'offline'
   : 'עפעס איז נישט געגאנגען. פרוביר נאכאמאל.');
 
 const pad = (n) => String(n).padStart(2, '0');
+/** A warm line for the top of the counter card. */
+function cheer(days) {
+  if (days < 1) return 'יעדער גרויסער וועג הייבט זיך אן מיט איין שריט 💪';
+  if (days < 3) return 'שיין אנגעהויבן! האלט אן ווייטער 🌱';
+  if (days < 7) return 'דו גייסט גוט – יעדער טאג איז א געווינס ⭐';
+  if (days < 30) return 'א גאנצע וואך און מער – שטארק! 🔥';
+  if (days < 90) return 'דו ביסט אויפ\'ן וועג צום וואנט פון כבוד 🏆';
+  if (days < 365) return 'א צדיק! דו בויסט א נייע לעבן 👑';
+  return 'בעל תשובה – א גאנץ יאר און מער! מזל טוב 🎉';
+}
+
 /** 12-hour clock: 9:25 PM */
 const fmt12 = (d) => `${d.getHours() % 12 || 12}:${pad(d.getMinutes())} ${d.getHours() < 12 ? 'AM' : 'PM'}`;
 const fmtGreg = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -318,21 +329,31 @@ function renderHome() {
         <span><b class="num">${days}</b><i>${lvl ? esc(LEVELS[lvl - 1].n) : 'טעג'}</i></span>
       </button>
     </header>
-    <section class="hero">
-      <div class="big">
-        <div class="days num" id="cDays">${days}</div>
-        <div class="days-label">${days === 1 ? 'טאג ריין' : 'טעג ריין'}</div>
-        <div class="clock num"><div><b id="cH">00</b><span>שעות</span></div><div><b id="cM">00</b><span>מינוט</span></div><div><b id="cS">00</b><span>סעקונדעס</span></div></div>
-        ${start ? `<div class="since">🗓️ זינט ${esc(fmtHeb(start))} · <span class="ltr">${esc(fmtGreg(start))}</span></div>` : ''}
-      </div>
-      <div class="level">
-        ${lvl ? `<img src="${awardImg(lvl)}" alt="" onerror="this.style.visibility='hidden'">` : ''}
-        <div class="grow">
-          <div class="t">${lvl ? `שטאפל ${lvl}: ${esc(LEVELS[lvl - 1].n)}` : 'דו הייבסט אן!'}</div>
-          <div class="s">נאך ${goal.at - days} טעג ביז ${esc(goal.label)}</div>
-          <div class="bar"><i style="width:${Math.round(goal.pct * 100)}%"></i></div>
+    <section class="hero hero2">
+      <span class="blob b1"></span><span class="blob b2"></span>
+      <div class="cheer">${esc(cheer(days))}</div>
+      <div class="ring-wrap">
+        <svg class="ring" viewBox="0 0 120 120" aria-hidden="true">
+          <circle cx="60" cy="60" r="52" class="ring-bg"/>
+          <circle cx="60" cy="60" r="52" class="ring-fg" pathLength="100" style="stroke-dasharray:${Math.max(2, Math.round(goal.pct * 100))} 100"/>
+        </svg>
+        <div class="ring-in">
+          <div class="days num" id="cDays">${days}</div>
+          <div class="days-label">${days === 1 ? 'טאג ריין' : 'טעג ריין'}</div>
         </div>
       </div>
+      <div class="clock2 num">
+        <span><b id="cH">00</b> שעות</span><span><b id="cM">00</b> מינוט</span><span><b id="cS">00</b> סעק</span>
+      </div>
+      <div class="next">
+        ${goal.at ? `<img src="${awardImg(Math.min(LEVELS.length, lvl + 1))}" alt="" onerror="this.style.visibility='hidden'">` : ''}
+        <div class="grow">
+          <div class="t">${lvl ? `שטאפל ${lvl} · ${esc(LEVELS[lvl - 1].n)}` : 'דיין רייזע הייבט זיך אן! 🌱'}</div>
+          <div class="s">נאך <b>${goal.at - days}</b> ${goal.at - days === 1 ? 'טאג' : 'טעג'} ביז ${esc(goal.label)} 🎯</div>
+          <div class="bar"><i style="width:${Math.max(3, Math.round(goal.pct * 100))}%"></i></div>
+        </div>
+      </div>
+      ${start ? `<div class="since">🗓️ זינט ${esc(fmtHeb(start))} · <span class="ltr">${esc(fmtGreg(start))}</span></div>` : ''}
     </section>
 
     <section class="card checkin">

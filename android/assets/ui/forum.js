@@ -826,7 +826,7 @@ async function sendChat(cv) {
   ta.value = '';
   ta.oninput();
   const data = {
-    attachmentsIds: [], body, conversationId: cv.c.id || null, interlocutorId: cv.c.id ? null : cv.c.interlocutorId || other(cv.c).id,
+    attachmentsIds: [], body, conversationId: cv.c.id || null, interlocutorId: cv.c.interlocutorId || other(cv.c).id || null, // the server wants both
     meta: null, parentMessageId: cv.reply ? cv.reply.id : null, supportLabel: null,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, type: 'Text',
   };
@@ -950,6 +950,10 @@ function drawCats() {
             ${c.unread ? `<span class="wa-badge">${c.unread > 999 ? '999+' : c.unread}</span>` : ''}</span>
         </span></button>`).join('')}`;
   }).join('') || '<div class="center muted" style="padding:40px">גארנישט געפונען</div>';
+  const total = forum.cats.groups.reduce((n, g) => n + g.cats.length, 0);
+  if (!q && total < 4) box.innerHTML += `<div class="few-groups">🌱 <b>נייע מיטגלידער זעען אין אנהייב נאר טייל גרופעס.</b><br>
+    שרייב אין די גרופעס וואס דו זעסט, און מיט דער צייט עפענען זיך נאך. דערווייל קענסטו זען אלע טעמעס אין <a href="#" id="toTopics">טעמעס</a>.</div>`;
+  $('#toTopics') && ($('#toTopics').onclick = (e) => { e.preventDefault(); forum.section = 'topics'; renderForum(); });
   box.querySelectorAll('[data-cat]').forEach((b) => (b.onclick = () => {
     const c = forum.cats.groups.flatMap((g) => g.cats).find((x) => x.catid === b.dataset.cat);
     openCategory(c);
@@ -1360,11 +1364,18 @@ async function newTopicSheet(catid) {
   const pick = catid || '3';
   openModal(`
     <h2>נייע טעמע</h2>
-    <label class="field"><span>גרופע</span><select id="ntCat" class="input">${cats.map((c) => `<option value="${esc(c.v)}"${c.v === String(pick) ? ' selected' : ''}>${esc(c.t)}</option>`).join('')}</select></label>
+    <div class="field"><span>גרופע</span>
+      <input type="hidden" id="ntCat" value="${esc((cats.find((c) => c.v === String(pick)) || cats[0] || {}).v || '')}">
+      <div class="cat-pick" id="ntPick">${cats.map((c) => `<button type="button" data-v="${esc(c.v)}" class="${c.v === String((cats.find((x) => x.v === String(pick)) || cats[0] || {}).v) ? 'on' : ''}">
+        <span class="cp-ic" style="background:${colorOf(c.t)}">${CAT_ICONS[c.v] || esc(initial(c.t))}</span><span class="grow">${esc(c.t)}</span><span class="cp-ok">✓</span></button>`).join('')}</div></div>
     <label class="field"><span>טיטל</span><input id="ntSub" class="input" maxlength="50" dir="auto"></label>
     <label class="field"><span>מעלדונג</span><textarea id="ntMsg" class="input" rows="6" dir="auto"></textarea></label>
     <label class="check"><input type="checkbox" id="ntSubscribe" checked><span>🔔 סובסקרייב – לאז מיך וויסן ווען עמעצער ריפלייט</span></label>
     <div class="btns"><button class="btn wa-green" id="ntGo">${icon('send')} ארויפלייגן</button><button class="btn line" data-close>צוריק</button></div>`);
+  document.querySelectorAll('#ntPick [data-v]').forEach((b) => (b.onclick = () => {
+    document.querySelectorAll('#ntPick [data-v]').forEach((x) => x.classList.toggle('on', x === b));
+    $('#ntCat').value = b.dataset.v;
+  }));
   $('#ntGo').onclick = async () => {
     const subject = $('#ntSub').value.trim(), message = $('#ntMsg').value.trim();
     if (!subject || !message) { toast('שרייב א טיטל און א מעלדונג'); return; }

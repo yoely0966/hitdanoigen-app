@@ -201,7 +201,7 @@ function expired() {
 
 /* ---------------- shell / nav ---------------- */
 const TABS = [
-  { id: 'home', t: 'היים', i: 'home' },
+  { id: 'home', t: 'האום', i: 'home' },
   { id: 'chart', t: 'טשארט', i: 'chart' },
   { id: 'forum', t: 'טשעטס', i: 'chat' },
   { id: 'more', t: 'מער', i: 'more' },
@@ -240,7 +240,7 @@ async function loadHome(quiet) {
     if (state.tab === 'home') renderHome();
   } catch (e) {
     if (e.message !== 'auth' && !quiet && state.tab === 'home') {
-      view().innerHTML = `<div class="page-title">היים</div><div class="card center"><p>${errText(e)}</p>
+      view().innerHTML = `<div class="page-title">האום</div><div class="card center"><p>${errText(e)}</p>
         <button class="btn ghost" id="retry">${icon('refresh')} פרוביר נאכאמאל</button></div>`;
       $('#retry').onclick = () => { view().innerHTML = '<div class="spinner"></div>'; loadHome(); };
     }
@@ -356,7 +356,7 @@ function renderHome() {
     ${!N.hasWidget() && N.canPinWidget() ? `
     <button class="card row" id="bWidget" style="width:100%;text-align:right">
       <span class="ic" style="width:42px;height:42px;border-radius:14px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center">${icon('widget')}</span>
-      <span class="grow"><b>לייג צו א ווידזשעט</b><br><span class="muted small">זע דיינע טעג און אפדעיט דעם טשארט גלייך פון די היים-סקרין</span></span>${icon('chev')}
+      <span class="grow"><b>לייג צו א ווידזשעט</b><br><span class="muted small">זע דיינע טעג און אפדעיט דעם טשארט גלייך פון די האום-סקרין</span></span>${icon('chev')}
     </button>` : ''}
     <div class="pull">דאטא גלייך פון די וועבזייטל · <a href="#" id="bRefresh">ריפרעש</a></div>`;
 
@@ -810,8 +810,8 @@ function renderMore() {
     <div class="section-title">ווידזשעט</div>
     <section class="card">
       <p style="margin:0 0 12px" class="muted small">דער ווידזשעט ווייזט דיינע ריינע טעג און לאזט דיר אפדעיטן דעם טשארט מיט איין דריק. ער ריפרעשט זיך אליין יעדע האלבע שעה.</p>
-      ${N.canPinWidget() ? `<button class="btn ghost" id="wPin">${icon('widget')} ${N.hasWidget() ? 'עד נאך א ווידזשעט' : 'עד צום היים-סקרין'}</button>`
-        : '<div class="note">האלט אן א ליידיגן פלאץ אויפ\'ן היים-סקרין ← ווידזשעטס ← היט דיינע אויגן.</div>'}
+      ${N.canPinWidget() ? `<button class="btn ghost" id="wPin">${icon('widget')} ${N.hasWidget() ? 'עד נאך א ווידזשעט' : 'עד צום האום-סקרין'}</button>`
+        : '<div class="note">האלט אן א ליידיגן פלאץ אויפ\'ן האום-סקרין ← ווידזשעטס ← היט דיינע אויגן.</div>'}
     </section>
 
     <div class="section-title">וועבזייטל</div>

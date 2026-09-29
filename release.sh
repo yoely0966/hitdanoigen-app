@@ -45,7 +45,7 @@ api() { curl -fsS -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.
 # notes go through a UTF-8 file: Windows mangles Yiddish passed as a command-line argument
 NOTES_FILE="$HERE/.release-notes.tmp"; printf '%s' "$notes" > "$NOTES_FILE"
 command -v cygpath >/dev/null 2>&1 && NOTES_FILE_W="$(cygpath -w "$NOTES_FILE")" || NOTES_FILE_W="$NOTES_FILE"
-body="$(node -e 'const fs=require("fs");process.stdout.write(JSON.stringify({tag_name:process.argv[1],name:process.argv[1],body:fs.readFileSync(process.argv[2],"utf8"),draft:false,prerelease:false}))' "v$new_name" "$NOTES_FILE_W")"
+body="$(node "$(cygpath -w "$HERE/android/tools/release_body.js" 2>/dev/null || echo "$HERE/android/tools/release_body.js")" "v$new_name" "$NOTES_FILE_W")"
 rm -f "$NOTES_FILE"
 [ -n "$body" ] || { echo "could not prepare the release text" >&2; exit 1; }
 rel="$(api -X POST "https://api.github.com/repos/$REPO/releases" -d "$body")"

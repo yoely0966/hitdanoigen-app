@@ -98,6 +98,7 @@ public class WebActivity extends Activity {
 
             @Override public void onPageFinished(WebView v, String url) {
                 CookieManager.getInstance().flush();
+                if (getIntent().getBooleanExtra("capture", false)) capture(v, url);
                 if (getIntent().getStringExtra("title") == null) title.setText(v.getTitle());
             }
         });
@@ -122,6 +123,25 @@ public class WebActivity extends Activity {
 
         String url = getIntent().getStringExtra("url");
         web.loadUrl(url != null ? url : Auth.APP + "/");
+    }
+
+    /**
+     * Sign-up mode: once the site shows its dashboard (the user finished signing up / logging in),
+     * take the login token it stored, so the app is logged in too - no second login needed.
+     */
+    private void capture(WebView v, String url) {
+        Uri u = Uri.parse(url);
+        String path = u.getPath() == null ? "" : u.getPath();
+        if (!"app.hitdanoigen.com".equals(u.getHost()) || path.startsWith("/signup") || path.startsWith("/signin")
+                || path.startsWith("/login") || path.startsWith("/verification") || path.startsWith("/onboarding")) return;
+        v.evaluateJavascript("localStorage.getItem('token')", val -> {
+            String t = Auth.unquote(val);
+            if (t == null || t.split("\\.").length != 3 || !Store.tokenFresh(t, 60)) return;
+            Store.setToken(this, t);
+            ChartWidget.refreshAsync(this);
+            android.widget.Toast.makeText(this, "דו ביסט איינגעלאגט ✓", android.widget.Toast.LENGTH_SHORT).show();
+            finish();
+        });
     }
 
     static boolean isSite(String host) {

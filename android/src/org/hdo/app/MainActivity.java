@@ -324,6 +324,12 @@ public class MainActivity extends Activity {
             });
         }
 
+        /** Opens the site's sign-up inside the app; WebActivity picks up the new login at the end. */
+        @JavascriptInterface public void signup() {
+            runOnUiThread(() -> startActivity(new Intent(MainActivity.this, WebActivity.class)
+                    .putExtra("url", Auth.APP + "/signup").putExtra("title", "נייע אקאונט").putExtra("capture", true)));
+        }
+
         @JavascriptInterface public void openHandbook() {
             runOnUiThread(() -> startActivity(new Intent(MainActivity.this, ReaderActivity.class)));
         }

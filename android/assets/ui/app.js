@@ -133,6 +133,8 @@ window.onNativeAction = (a) => {
   if (a === 'setback') { go('home'); setbackSheet(); }
 };
 window.onResumeApp = () => {
+  // came back from signing up (or logging in) on the website: the app picked up the login
+  if (N.isLoggedIn() && $('#nav')?.classList.contains('hidden') && !$('#chat') && $('.login')) { showApp(); toast('ברוך הבא! דו ביסט איינגעלאגט'); return; }
   if (!N.isLoggedIn() || !$('#nav') || $('#nav').classList.contains('hidden')) return;
   if (state.tab === 'home' && Date.now() - state.homeAt > 5 * 60_000) loadHome(true);
   if (typeof refreshUnread === 'function') refreshUnread();
@@ -164,11 +166,13 @@ function showLogin(msg) {
       <label class="check"><input id="lr" type="checkbox" checked>
         <span>בלייב איינגעלאגט<br><span class="muted small">דער פאסווארט ווערט געהאלטן ענקריפטעד נאר אויף דעם פאון, כדי די עפפ זאל זיך קענען אליין ריפרעשן.</span></span></label>
       <button id="lb" class="btn">לאג איין</button>
-      <p class="center small" style="margin-top:18px"><a href="#" id="lf">פארגעסן פאסווארט? / נייע אקאונט</a></p>
+      <button class="btn line" id="lSign" style="margin-top:12px">נייע אקאונט? שרייב זיך איין</button>
+      <p class="center small" style="margin-top:14px"><a href="#" id="lf">פארגעסן פאסווארט?</a></p>
     </div>`;
   const pw = $('#lp');
   $('#eye').onclick = () => { const s = pw.type === 'password'; pw.type = s ? 'text' : 'password'; $('#eye').innerHTML = icon(s ? 'eyeOff' : 'eye'); };
   $('#lf').onclick = (e) => { e.preventDefault(); N.openWeb(SITE + '/login', 'לאג איין'); };
+  $('#lSign').onclick = () => N.signup();
   const submit = () => {
     const u = $('#lu').value.trim(), p = pw.value;
     if (!u || !p) { lerr('שרייב אריין יוזער-נעים און פאסווארט'); return; }
@@ -303,6 +307,7 @@ function renderHome() {
   view().innerHTML = `
     ${state.update?.available ? `<button class="banner" id="updBanner" style="width:100%">${icon('download')} <span class="grow">א נייע ווערזשן (${esc(state.update.latest)}) איז גרייט</span>${icon('chev')}</button>` : ''}
     <section class="hero">
+      <button class="me-badge" id="meBadge" aria-label="מיין פראפיל"><b>${days}</b></button>
       <div class="hello">${greeting()}, ${esc(name)}</div>
       ${start ? `<div class="since">דו האסט אנגעהויבן דיין רייזע ${esc(fmtHeb(start))} – ${esc(fmtGreg(start))}</div>` : ''}
       <div class="big">
@@ -361,6 +366,7 @@ function renderHome() {
     <div class="pull">דאטא גלייך פון די וועבזייטל · <a href="#" id="bRefresh">ריפרעש</a></div>`;
 
   $('#bClean').onclick = () => checkInClean();
+  $('#meBadge').onclick = () => profileMenu();
   $('#bFall').onclick = () => setbackSheet();
   $('#bWall') && ($('#bWall').onclick = () => { state.chart.seg = 'woh'; go('chart'); });
   $('#bWidget') && ($('#bWidget').onclick = () => N.pinWidget());
@@ -457,6 +463,11 @@ function setbackSheet() {
     <p>עס איז שווער, אבער וויכטיג איז אויפצושטיין און גיין ווייטער. יעדער ריינער טאג וואס דו האסט שוין געהאט בלייבט דיינער.</p>
     <label class="field"><span>ווען איז עס געשען?</span>
       <input id="sbDate" class="input" type="datetime-local" dir="ltr" value="${local(now)}" max="${local(now)}"></label>
+    <label class="field"><span>וואספארא שטרויכלונגען/סיטואציעס טראכסטו האט צוגעברענגט דעם דורכפאל?</span>
+      <textarea id="sbWhy" class="input" rows="3" dir="auto" placeholder="למשל: מיד, אליין, צו שפעט אין די נאכט…"></textarea></label>
+    <label class="field"><span>וואספארא שריט וועסטו אונטערנעמען צו פארמיידן ווייטערדיגע דורכפעלער?</span>
+      <textarea id="sbPlan" class="input" rows="3" dir="auto" placeholder="למשל: קיין פאון אין בעט, רופן א חבר…"></textarea></label>
+    <div id="sbErr" class="err hidden"></div>
     <div class="btns">
       <button class="btn" id="sbGo">באשטעטיג</button>
       <button class="btn line" data-close>צוריק</button>
@@ -464,11 +475,15 @@ function setbackSheet() {
   $('#sbGo').onclick = async () => {
     const v = $('#sbDate').value;
     const d = v ? new Date(v) : new Date();
-    if (d > new Date()) { toast('די צייט קען נישט זיין אין די פיוטשער'); return; }
+    const why = $('#sbWhy').value.trim(), plan = $('#sbPlan').value.trim();
+    const err = (m) => { const e = $('#sbErr'); e.textContent = m; e.classList.remove('hidden'); };
+    if (d > new Date()) { err('די צייט קען נישט זיין אין די פיוטשער'); return; }
+    if (!why || !plan) { err('ביטע ענטפער אויף ביידע פראגעס – דאס העלפט דיר דעם קומענדיגן מאל.'); return; }
     $('#sbGo').disabled = true;
     try {
       await api('/daily-check-in', 'POST', { isSetback: true, setbackDate: d.toISOString() });
       N.checkedIn(true);
+      saveFallToChart(d, why, plan); // the 90-day chart keeps the answers in the diary, like the site
       openModal(`
         <div class="celebrate">💪</div>
         <h2>א נייער אנהויב</h2>
@@ -485,6 +500,46 @@ function setbackSheet() {
       $('#sbGo').disabled = false;
     }
   };
+}
+
+/** Same request as the site's own "update chart – fall" form, so the answers land in the diary. */
+async function saveFallToChart(d, why, plan) {
+  const ymd = (x) => `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`;
+  const fields = {
+    timezone: String(new Date().getTimezoneOffset() * 60), status: 'fall',
+    last_fall: ymd(d), clean_since: ymd(new Date()), situation: why, prevent: plan, user: '', ajax: 'true',
+  };
+  const body = Object.entries(fields).map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&');
+  const r = await new Promise((res) => { const id = ++rid; pending[id] = res; N.httpForm(id, SITE + '/90days/profile?view=profile&task=updateProfile&ajax=1&from=chart', body); });
+  let j = null;
+  try { j = JSON.parse(r.body); } catch {}
+  if (!r.ok || (j && j.errors && Object.values(j.errors).some(Boolean))) toast('דער טאג-בוך האט נישט אנגענומען די ענטפערס – זיי זענען נישט געהיטן');
+  state.journal = null;
+}
+
+/* ---------------- profile menu (like the site's top bar) ---------------- */
+function profileMenu() {
+  const u = state.user || {};
+  const start = streakStart();
+  const days = start ? Math.max(0, Math.floor((Date.now() - start) / 86400000)) : state.dash?.stats?.cleanDaysStreak || 0;
+  const lvl = levelFor(days);
+  openModal(`
+    <div class="pm-head"><span class="pm-days">${days}</span>
+      <div><b>${esc(u.username || N.username() || '')}</b><div class="muted small">${lvl ? esc(LEVELS[lvl - 1].n) : ''}</div></div></div>
+    <div class="list" style="margin:0">
+      <button class="item" data-pm="account"><span class="ic">${icon('users')}</span><span class="grow t">מיין קאנטע</span></button>
+      <button class="item" data-pm="settings"><span class="ic">${icon('gear')}</span><span class="grow t">סעטינגס</span></button>
+      <button class="item" data-pm="donate"><span class="ic">${icon('heart')}</span><span class="grow t">העלפט אונז</span></button>
+      <button class="item" data-pm="out"><span class="ic" style="background:var(--red-soft);color:var(--red)">${icon('out')}</span><span class="grow t" style="color:var(--red)">לאג ארויס</span></button>
+    </div>`);
+  document.querySelectorAll('#modal [data-pm]').forEach((b) => (b.onclick = () => {
+    const a = b.dataset.pm;
+    closeModal();
+    if (a === 'account') N.openWeb(APP + '/settings/profile', 'מיין קאנטע');
+    else if (a === 'settings') go('more');
+    else if (a === 'donate') N.openWeb(SITE + '/donate', 'העלפט אונז');
+    else { go('more'); setTimeout(() => $('#bOut')?.click(), 50); }
+  }));
 }
 
 /* ---------------- modal ---------------- */

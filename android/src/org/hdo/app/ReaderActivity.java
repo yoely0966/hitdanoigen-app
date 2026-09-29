@@ -63,7 +63,10 @@ public class ReaderActivity extends Activity {
     private boolean columns;
     private LruCache<Integer, Bitmap> cache;
     private ListView list;
-    private TextView pageLabel, markBtn, modeBtn, status;
+    private TextView pageLabel, status;
+    private ImageView markBtn, modeBtn;
+    private ZoomFrame zoomer;
+    private float downY = -1;
     private ProgressBar bar;
     private FrameLayout body;
     private boolean dark;
@@ -112,11 +115,11 @@ public class ReaderActivity extends Activity {
         pill.setColor(Color.parseColor(dark ? "#2A2342" : "#F1EBFF"));
         pageLabel.setBackground(pill);
         pageLabel.setOnClickListener(v -> askPage());
-        modeBtn = iconBtn(columns ? "📄" : "▥");
+        modeBtn = iconImg(columns ? R.drawable.ic_page : R.drawable.ic_columns, "שפאלטן / גאנצע בלעטער");
         modeBtn.setOnClickListener(v -> toggleMode());
-        markBtn = iconBtn("☆");
-        markBtn.setOnClickListener(v -> toggleMark());
-        TextView listBtn = iconBtn("☰");
+        markBtn = iconImg(R.drawable.ic_bookmark_border, "בוקמארק דא");
+        markBtn.setOnClickListener(v -> markHere());
+        ImageView listBtn = iconImg(R.drawable.ic_bookmarks, "בוקמארקס");
         listBtn.setOnClickListener(v -> showMarks());
         top.addView(close);
         top.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
@@ -370,21 +373,23 @@ public class ReaderActivity extends Activity {
         list.setDivider(null);
         list.setBackgroundColor(bg);
         list.setAdapter(new Pieces());
-        GestureDetector taps = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
-            @Override public boolean onDoubleTap(MotionEvent e) {
-                int pos = list.pointToPosition((int) e.getX(), (int) e.getY());
-                if (pos >= 0) zoom(pos);
-                return true;
-            }
+        list.setOnTouchListener((v, e) -> {
+            if (e.getActionMasked() == MotionEvent.ACTION_DOWN) downY = e.getY();
+            return false;
         });
-        list.setOnTouchListener((v, e) -> { taps.onTouchEvent(e); return false; });
+        list.setOnItemLongClickListener((parent, view, pos, id) -> {
+            float frac = view.getHeight() > 0 && downY >= 0 ? Math.max(0f, Math.min(1f, (downY - view.getTop()) / view.getHeight())) : 0f;
+            addMark(pos, frac);
+            return true;
+        });
         list.setOnScrollListener(new AbsListView.OnScrollListener() {
             @Override public void onScrollStateChanged(AbsListView v, int s) { if (s == SCROLL_STATE_IDLE) savePos(); }
             @Override public void onScroll(AbsListView v, int first, int count, int total) {
                 if (first != current) { current = first; updateLabel(); }
             }
         });
-        body.addView(list);
+        zoomer = new ZoomFrame(this, list);
+        body.addView(zoomer);
         // back to where the user stopped (page + which column + offset)
         int page = Store.prefs(this).getInt("hb_page", 0), part = Store.prefs(this).getInt("hb_part", 0);
         int off = Store.prefs(this).getInt("hb_off", 0);
@@ -402,7 +407,7 @@ public class ReaderActivity extends Activity {
         float[] cur = segs.get(Math.min(current, segs.size() - 1));
         columns = !columns;
         Store.prefs(this).edit().putBoolean("hb_columns", columns).apply();
-        modeBtn.setText(columns ? "📄" : "▥");
+        modeBtn.setImageResource(columns ? R.drawable.ic_page : R.drawable.ic_columns);
         cache.evictAll();
         buildSegs();
         ((BaseAdapter) list.getAdapter()).notifyDataSetChanged();
@@ -434,9 +439,9 @@ public class ReaderActivity extends Activity {
         float[] s = segs.get(Math.min(current, segs.size() - 1));
         String part = s[5] == 1 ? " · ①" : s[5] == 2 ? " · ②" : "";
         pageLabel.setText("בלאט " + ((int) s[0] + 1) + " / " + sizes.length + part);
-        boolean marked = markIndex(curPage()) >= 0;
-        markBtn.setText(marked ? "★" : "☆");
-        markBtn.setTextColor(marked ? Color.parseColor("#F59E0B") : ink);
+        boolean marked = marksOnSeg(current).size() > 0;
+        markBtn.setImageResource(marked ? R.drawable.ic_bookmark : R.drawable.ic_bookmark_border);
+        markBtn.setImageTintList(android.content.res.ColorStateList.valueOf(marked ? Color.parseColor("#F59E0B") : ink));
     }
 
     private final class Pieces extends BaseAdapter {
@@ -445,18 +450,46 @@ public class ReaderActivity extends Activity {
         @Override public long getItemId(int i) { return i; }
 
         @Override public View getView(int pos, View convert, ViewGroup parent) {
-            ImageView iv = convert instanceof ImageView ? (ImageView) convert : new ImageView(ReaderActivity.this);
+            FrameLayout cell = convert instanceof FrameLayout ? (FrameLayout) convert : new FrameLayout(ReaderActivity.this);
+            ImageView iv;
+            if (cell.getChildCount() == 0) {
+                iv = new ImageView(ReaderActivity.this);
+                cell.addView(iv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            } else {
+                iv = (ImageView) cell.getChildAt(0);
+                while (cell.getChildCount() > 1) cell.removeViewAt(1);
+            }
             float[] s = segs.get(pos);
             int w = parent.getWidth() > 0 ? parent.getWidth() : getResources().getDisplayMetrics().widthPixels;
-            int h = Math.round(w * (s[4] - s[2]) / (s[3] - s[1]));
+            int h = segHeight(pos, w);
             // a thin gap between the two columns of a page, a wider one between pages
             boolean pageEnd = pos + 1 >= segs.size() || (int) segs.get(pos + 1)[0] != (int) s[0];
-            iv.setLayoutParams(new AbsListView.LayoutParams(w, h + dp(pageEnd ? 14 : 3)));
+            cell.setLayoutParams(new AbsListView.LayoutParams(w, h + dp(pageEnd ? 14 : 3)));
             iv.setPadding(0, 0, 0, dp(pageEnd ? 14 : 3));
             iv.setScaleType(ImageView.ScaleType.FIT_START);
             iv.setTag(pos);
+            // bookmark tags on this piece
+            for (JSONObject m : marksOnSeg(pos)) {
+                TextView tag = new TextView(ReaderActivity.this);
+                String n = m.optString("name", "");
+                tag.setText("🔖 " + (n.isEmpty() ? "בוקמארק" : n));
+                tag.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+                tag.setTypeface(Typeface.DEFAULT_BOLD);
+                tag.setTextColor(Color.WHITE);
+                tag.setPadding(dp(10), dp(4), dp(10), dp(4));
+                tag.setMaxLines(1);
+                GradientDrawable g = new GradientDrawable();
+                g.setColor(Color.parseColor("#E6F59E0B"));
+                g.setCornerRadius(dp(99));
+                tag.setBackground(g);
+                FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.RIGHT);
+                lp.topMargin = Math.max(0, Math.round((float) m.optDouble("y", 0) * h) - dp(12));
+                lp.rightMargin = dp(6);
+                cell.addView(tag, lp);
+                tag.setOnClickListener(v -> editMark(m));
+            }
             Bitmap cached = cache.get(pos);
-            if (cached != null) { iv.setImageBitmap(cached); return iv; }
+            if (cached != null) { iv.setImageBitmap(cached); return cell; }
             iv.setImageDrawable(null);
             final int width = Math.min(w, 1440);
             renderThread.execute(() -> {
@@ -466,8 +499,13 @@ public class ReaderActivity extends Activity {
                 cache.put(pos, bmp);
                 ui.post(() -> { if (Integer.valueOf(pos).equals(iv.getTag())) iv.setImageBitmap(bmp); });
             });
-            return iv;
+            return cell;
         }
+    }
+
+    private int segHeight(int pos, int w) {
+        float[] s = segs.get(pos);
+        return Math.round(w * (s[4] - s[2]) / (s[3] - s[1]));
     }
 
     /** Renders one piece {page, x0, y0, x1, y1} at the given pixel width (render thread). */
@@ -492,77 +530,91 @@ public class ReaderActivity extends Activity {
         }
     }
 
-    // ---------- zoom one piece (double tap) ----------
-    private void zoom(int pos) {
-        FrameLayout layer = new FrameLayout(this);
-        layer.setBackgroundColor(Color.BLACK);
-        ZoomView z = new ZoomView(this);
-        layer.addView(z);
-        TextView x = iconBtn("✕");
-        x.setTextColor(Color.WHITE);
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP | Gravity.START);
-        lp.setMargins(dp(8), dp(8), dp(8), dp(8));
-        layer.addView(x, lp);
-        x.setOnClickListener(v -> body.removeView(layer));
-        body.addView(layer);
-        int w = Math.min(getResources().getDisplayMetrics().widthPixels * 2, 2400);
-        float[] s = segs.get(pos);
-        renderThread.execute(() -> {
-            Bitmap bmp = render(s, w);
-            ui.post(() -> { if (bmp != null) z.setBitmap(bmp); });
-        });
-    }
+    // ---------- pinch zoom on the reading list ----------
+    /**
+     * Wraps the list: pinch to zoom 1x-4x, drag to move while zoomed (vertical drags past the
+     * edge scroll the list), double tap to zoom in / back out. At 1x the list scrolls normally.
+     */
+    private final class ZoomFrame extends FrameLayout {
+        private final ListView lv;
+        private final ScaleGestureDetector scaler;
+        private final GestureDetector taps;
+        private float scale = 1f, tx = 0f, ty = 0f, lastX, lastY;
+        private boolean pinching;
 
-    /** Pinch-zoom / pan / double-tap image. */
-    private static final class ZoomView extends ImageView {
-        private final Matrix m = new Matrix();
-        private final ScaleGestureDetector scale;
-        private final GestureDetector gestures;
-        private float base = 1f;
-
-        ZoomView(Context c) {
+        ZoomFrame(Context c, ListView lv) {
             super(c);
-            setScaleType(ScaleType.MATRIX);
-            scale = new ScaleGestureDetector(c, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
-                @Override public boolean onScale(ScaleGestureDetector d) {
-                    float cur = current();
-                    float f = Math.max(base / cur, Math.min(d.getScaleFactor(), base * 6 / cur));
-                    m.postScale(f, f, d.getFocusX(), d.getFocusY());
-                    setImageMatrix(m);
-                    return true;
-                }
+            this.lv = lv;
+            addView(lv);
+            lv.setPivotX(0);
+            lv.setPivotY(0);
+            scaler = new ScaleGestureDetector(c, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                @Override public boolean onScaleBegin(ScaleGestureDetector d) { pinching = true; return true; }
+                @Override public boolean onScale(ScaleGestureDetector d) { zoomTo(scale * d.getScaleFactor(), d.getFocusX(), d.getFocusY()); return true; }
+                @Override public void onScaleEnd(ScaleGestureDetector d) { pinching = false; }
             });
-            gestures = new GestureDetector(c, new GestureDetector.SimpleOnGestureListener() {
-                @Override public boolean onScroll(MotionEvent a, MotionEvent b, float dx, float dy) {
-                    m.postTranslate(-dx, -dy);
-                    setImageMatrix(m);
-                    return true;
-                }
+            taps = new GestureDetector(c, new GestureDetector.SimpleOnGestureListener() {
                 @Override public boolean onDoubleTap(MotionEvent e) {
-                    if (current() > base * 1.2f) fit();
-                    else { m.postScale(2.5f, 2.5f, e.getX(), e.getY()); setImageMatrix(m); }
+                    if (scale > 1.05f) zoomTo(1f, e.getX(), e.getY());
+                    else zoomTo(2.2f, e.getX(), e.getY());
                     return true;
                 }
             });
         }
 
-        void setBitmap(Bitmap b) { setImageBitmap(b); post(this::fit); }
+        boolean zoomed() { return scale > 1.01f; }
 
-        private float current() { float[] v = new float[9]; m.getValues(v); return v[Matrix.MSCALE_X]; }
+        void reset() { zoomTo(1f, 0, 0); }
 
-        private void fit() {
-            if (getDrawable() == null) return;
-            float dw = getDrawable().getIntrinsicWidth(), dh = getDrawable().getIntrinsicHeight();
-            base = getWidth() / dw; // fill the width, scroll down
-            m.reset();
-            m.postScale(base, base);
-            if (dh * base < getHeight()) m.postTranslate(0, (getHeight() - dh * base) / 2);
-            setImageMatrix(m);
+        private void zoomTo(float s2, float fx, float fy) {
+            s2 = Math.max(1f, Math.min(4f, s2));
+            tx = fx - (fx - tx) * (s2 / scale);
+            ty = fy - (fy - ty) * (s2 / scale);
+            scale = s2;
+            apply();
+        }
+
+        private void apply() {
+            float minX = getWidth() - getWidth() * scale, minY = getHeight() - getHeight() * scale;
+            tx = Math.max(minX, Math.min(0, tx));
+            ty = Math.max(minY, Math.min(0, ty));
+            if (scale <= 1.01f) { scale = 1f; tx = 0; ty = 0; }
+            lv.setScaleX(scale);
+            lv.setScaleY(scale);
+            lv.setTranslationX(tx);
+            lv.setTranslationY(ty);
+        }
+
+        @Override public boolean onInterceptTouchEvent(MotionEvent e) {
+            taps.onTouchEvent(e);
+            scaler.onTouchEvent(e);
+            if (e.getActionMasked() == MotionEvent.ACTION_DOWN) { lastX = e.getX(); lastY = e.getY(); }
+            // take over for two-finger pinches, and for any drag while zoomed in
+            if (e.getPointerCount() > 1 || pinching) return true;
+            if (zoomed() && e.getActionMasked() == MotionEvent.ACTION_MOVE
+                    && (Math.abs(e.getX() - lastX) > dp(6) || Math.abs(e.getY() - lastY) > dp(6))) return true;
+            return false;
         }
 
         @Override public boolean onTouchEvent(MotionEvent e) {
-            scale.onTouchEvent(e);
-            gestures.onTouchEvent(e);
+            scaler.onTouchEvent(e);
+            taps.onTouchEvent(e);
+            if (e.getActionMasked() == MotionEvent.ACTION_DOWN || e.getActionMasked() == MotionEvent.ACTION_POINTER_UP) {
+                lastX = e.getX(); lastY = e.getY();
+            }
+            if (e.getActionMasked() == MotionEvent.ACTION_MOVE && !pinching && e.getPointerCount() == 1) {
+                float dx = e.getX() - lastX, dy = e.getY() - lastY;
+                lastX = e.getX();
+                lastY = e.getY();
+                tx += dx;
+                float wantY = ty + dy;
+                float minY = getHeight() - getHeight() * scale;
+                float clamped = Math.max(minY, Math.min(0, wantY));
+                ty = clamped;
+                float rest = wantY - clamped; // what the zoom window can't absorb scrolls the list
+                if (Math.abs(rest) > 0.5f) lv.scrollListBy(Math.round(-rest / scale));
+                apply();
+            }
             return true;
         }
     }
@@ -575,42 +627,101 @@ public class ReaderActivity extends Activity {
 
     private void saveMarks(JSONArray a) { Store.prefs(this).edit().putString("hb_marks", a.toString()).apply(); }
 
-    private int markIndex(int page) {
+    /** Bookmarks lying on list piece {@code pos} (old page-only bookmarks sit on the page's first piece). */
+    private List<JSONObject> marksOnSeg(int pos) {
+        List<JSONObject> out = new ArrayList<>();
+        if (pos < 0 || pos >= segs.size()) return out;
+        float[] s = segs.get(pos);
         JSONArray a = marks();
-        for (int i = 0; i < a.length(); i++) if (a.optJSONObject(i).optInt("p") == page) return i;
-        return -1;
+        for (int i = 0; i < a.length(); i++) {
+            JSONObject m = a.optJSONObject(i);
+            if (m == null || m.optInt("p") != (int) s[0]) continue;
+            int part = m.optInt("part", -1);
+            if (part == (int) s[5] || (part == -1 && pos == firstSegOf((int) s[0]))
+                    || (!columns && part != -1) || (columns && part == 0 && pos == firstSegOf((int) s[0]))) out.add(m);
+        }
+        return out;
     }
 
-    private void toggleMark() {
-        if (sizes == null) return;
-        int page = curPage();
-        int at = markIndex(page);
-        if (at >= 0) {
-            JSONArray a = marks();
-            a.remove(at);
-            saveMarks(a);
-            updateLabel();
-            Toast.makeText(this, "דער בוקמארק איז אראפגענומען", Toast.LENGTH_SHORT).show();
-            return;
-        }
+    /** The top-bar bookmark button: bookmark the top of what's on screen now. */
+    private void markHere() {
+        if (list == null) return;
+        View v = list.getChildAt(0);
+        float frac = v != null && v.getHeight() > 0 ? Math.max(0f, Math.min(1f, -v.getTop() / (float) v.getHeight())) : 0f;
+        addMark(list.getFirstVisiblePosition(), frac);
+    }
+
+    /** Long press (or the button): a bookmark at this exact spot, with an optional name. */
+    private void addMark(int pos, float frac) {
+        if (pos < 0 || pos >= segs.size()) return;
+        float[] s = segs.get(pos);
+        int page = (int) s[0];
         EditText name = new EditText(this);
         name.setHint("בלאט " + (page + 1));
         name.setTextDirection(View.TEXT_DIRECTION_ANY_RTL);
         new AlertDialog.Builder(this)
-                .setTitle("☆ בוקמארק אויף בלאט " + (page + 1))
+                .setTitle("🔖 בוקמארק דא – בלאט " + (page + 1))
                 .setMessage("א נאמען (ווען דו ווילסט)")
                 .setView(name)
                 .setPositiveButton("היט אפ", (d, w) -> {
                     try {
                         JSONArray a = marks();
-                        a.put(new JSONObject().put("p", page).put("name", name.getText().toString().trim()).put("at", System.currentTimeMillis()));
+                        a.put(new JSONObject().put("p", page).put("part", (int) s[5]).put("y", Math.round(frac * 1000) / 1000.0)
+                                .put("name", name.getText().toString().trim()).put("at", System.currentTimeMillis()));
                         saveMarks(a);
-                        updateLabel();
-                        Toast.makeText(this, "★ בוקמארק געהיטן", Toast.LENGTH_SHORT).show();
+                        refreshCells();
+                        Toast.makeText(this, "🔖 בוקמארק געהיטן", Toast.LENGTH_SHORT).show();
                     } catch (Exception ignored) {}
                 })
                 .setNegativeButton("אפזאגן", null)
                 .show();
+    }
+
+    /** Tap on a bookmark tag: rename or delete it. */
+    private void editMark(JSONObject m) {
+        EditText name = new EditText(this);
+        name.setText(m.optString("name", ""));
+        name.setTextDirection(View.TEXT_DIRECTION_ANY_RTL);
+        new AlertDialog.Builder(this)
+                .setTitle("🔖 בלאט " + (m.optInt("p") + 1))
+                .setView(name)
+                .setPositiveButton("היט אפ", (d, w) -> updateMark(m, name.getText().toString().trim(), false))
+                .setNeutralButton("אראפנעמען", (d, w) -> updateMark(m, null, true))
+                .setNegativeButton("פארמאכן", null)
+                .show();
+    }
+
+    private void updateMark(JSONObject m, String newName, boolean delete) {
+        JSONArray a = marks(), out = new JSONArray();
+        for (int i = 0; i < a.length(); i++) {
+            JSONObject x = a.optJSONObject(i);
+            boolean same = x != null && x.optLong("at") == m.optLong("at") && x.optInt("p") == m.optInt("p");
+            if (same && delete) continue;
+            if (same) try { x.put("name", newName); } catch (Exception ignored) {}
+            out.put(x);
+        }
+        saveMarks(out);
+        refreshCells();
+        Toast.makeText(this, delete ? "דער בוקמארק איז אראפגענומען" : "געהיטן", Toast.LENGTH_SHORT).show();
+    }
+
+    private void refreshCells() {
+        if (list != null) ((BaseAdapter) list.getAdapter()).notifyDataSetChanged();
+        updateLabel();
+    }
+
+    /** Scroll so the bookmarked spot sits a little below the top bar. */
+    private void goToMark(JSONObject m) {
+        if (list == null) return;
+        int page = Math.max(0, Math.min(m.optInt("p"), sizes.length - 1));
+        int idx = firstSegOf(page), part = m.optInt("part", -1);
+        for (int j = idx; j < segs.size() && (int) segs.get(j)[0] == page; j++) if ((int) segs.get(j)[5] == part) { idx = j; break; }
+        int h = segHeight(idx, list.getWidth() > 0 ? list.getWidth() : getResources().getDisplayMetrics().widthPixels);
+        if (zoomer != null) zoomer.reset();
+        list.setSelectionFromTop(idx, -Math.round((float) m.optDouble("y", 0) * h) + dp(48));
+        current = idx;
+        updateLabel();
+        savePos();
     }
 
     private void showMarks() {
@@ -618,27 +729,22 @@ public class ReaderActivity extends Activity {
         int last = Store.prefs(this).getInt("hb_page", 0);
         String[] items = new String[a.length() + 1];
         items[0] = "📍 וואו איך האלט: בלאט " + (last + 1);
-        int[] pages = new int[a.length() + 1];
-        pages[0] = last;
+        JSONObject[] ms = new JSONObject[a.length() + 1];
         for (int i = 0; i < a.length(); i++) {
             JSONObject o = a.optJSONObject(i);
-            pages[i + 1] = o.optInt("p");
+            ms[i + 1] = o;
             String n = o.optString("name", "");
-            items[i + 1] = "★ בלאט " + (o.optInt("p") + 1) + (n.isEmpty() ? "" : " – " + n);
+            items[i + 1] = "🔖 בלאט " + (o.optInt("p") + 1) + (n.isEmpty() ? "" : " – " + n);
         }
         AlertDialog d = new AlertDialog.Builder(this)
-                .setTitle(a.length() == 0 ? "נאך קיין בוקמארקס (דרוק ☆)" : "בוקמארקס")
-                .setItems(items, (dlg, i) -> goTo(pages[i]))
+                .setTitle(a.length() == 0 ? "נאך נישטא קיין בוקמארקס – האלט אן ערגעץ אויף א בלאט" : "בוקמארקס")
+                .setItems(items, (dlg, i) -> { if (i == 0) goTo(last); else goToMark(ms[i]); })
                 .setNegativeButton("פארמאכן", null)
                 .create();
         d.setOnShowListener(x -> d.getListView().setOnItemLongClickListener((parent, view, i, id) -> {
             if (i == 0) return false;
-            JSONArray all = marks();
-            all.remove(i - 1);
-            saveMarks(all);
             d.dismiss();
-            updateLabel();
-            Toast.makeText(this, "דער בוקמארק איז אראפגענומען", Toast.LENGTH_SHORT).show();
+            editMark(ms[i]);
             return true;
         }));
         d.show();
@@ -683,12 +789,11 @@ public class ReaderActivity extends Activity {
     protected void onPause() {
         super.onPause();
         savePos();
-        if (!AppLock.needed(this)) AppLock.lastSeen = System.currentTimeMillis();
     }
 
     @Override
     public void onBackPressed() {
-        if (body.getChildCount() > 1) { body.removeViewAt(body.getChildCount() - 1); return; } // close zoom
+        if (zoomer != null && zoomer.zoomed()) { zoomer.reset(); return; } // zoom out first
         super.onBackPressed();
     }
 
@@ -709,6 +814,19 @@ public class ReaderActivity extends Activity {
         t.setGravity(Gravity.CENTER);
         t.setLayoutParams(new LinearLayout.LayoutParams(dp(42), dp(46)));
         return t;
+    }
+
+    private ImageView iconImg(int res, String label) {
+        ImageView v = new ImageView(this);
+        v.setImageResource(res);
+        v.setImageTintList(android.content.res.ColorStateList.valueOf(ink));
+        v.setScaleType(ImageView.ScaleType.CENTER);
+        v.setContentDescription(label);
+        v.setLayoutParams(new LinearLayout.LayoutParams(dp(44), dp(46)));
+        TypedValue tv = new TypedValue();
+        getTheme().resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, tv, true);
+        v.setBackgroundResource(tv.resourceId);
+        return v;
     }
 
     private TextView text(String s, int sp) {

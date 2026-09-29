@@ -226,3 +226,17 @@ body.wa #view { padding: 0 0 calc(96px + env(safe-area-inset-bottom)); }
 
 .wa-fab2.ai { bottom: calc(222px + env(safe-area-inset-bottom)); color: #6d28d9; border-color: rgba(124,58,237,.3); }
 @media (prefers-color-scheme: dark) { .wa-fab2.ai { color: #c4b5fd; } }
+
+/* ---------- pop-out editor ---------- */
+.wa-pop { flex: none; width: 38px; height: 38px; margin-bottom: 3px; border-radius: 50%; font-size: 19px; color: var(--wa-meta); }
+.wa-pop:active { background: rgba(0,168,132,.15); }
+.wa-editor { position: fixed; inset: 0; z-index: 40; display: flex; flex-direction: column; background: var(--wa-panel); animation: up .2s ease; }
+.wa-editor .fmt-bar.ed { margin: 10px 12px 6px; }
+.ed-text { flex: 1; margin: 0 12px; border: 1.5px solid var(--wa-line); border-radius: 16px; padding: 14px; font-size: 17px; line-height: 1.55;
+  resize: none; outline: none; background: var(--wa-in); color: var(--ink); }
+.ed-text:focus { border-color: var(--wa-accent); }
+.ed-preview { flex: 1; margin: 0 12px; overflow-y: auto; background: var(--wa-wall); border-radius: 16px; padding: 14px; }
+.ed-preview .bub { max-width: 100%; }
+.ed-foot { display: flex; align-items: center; gap: 12px; padding: 10px 12px calc(12px + env(safe-area-inset-bottom)); }
+.ed-foot .muted { flex: 1; }
+.ed-foot .btn { width: auto; padding: 0 26px; min-height: 48px; border-radius: 24px; }

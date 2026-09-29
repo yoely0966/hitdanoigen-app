@@ -99,23 +99,21 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         if (AppLock.needed(this)) lock(false);
-        else AppLock.unlocked = AppLock.unlocked || !AppLock.enabled(this);
+        else if (cover != null && cover.getVisibility() == View.VISIBLE && !prompting) showCover(false);
         js("window.onResumeApp&&window.onResumeApp()");
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        if (!prompting && !AppLock.needed(this)) AppLock.lastSeen = System.currentTimeMillis();
     }
 
     @Override
     protected void onStop() {
         super.onStop();
-        if (!prompting && !AppLock.needed(this)) AppLock.lastSeen = System.currentTimeMillis();
         autoPrompt = true;
         // hide the content in the recent-apps preview while locked-able
-        if (AppLock.enabled(this) && cover != null) showCover(true);
+        if (App.started == 0 && AppLock.enabled(this) && cover != null) showCover(true);
     }
 
     /** Shows the cover and asks for fingerprint / face / PIN. */
@@ -137,7 +135,7 @@ public class MainActivity extends Activity {
         }
         if (!fromUser && !autoPrompt) return;
         prompting = true;
-        AppLock.prompt(this, "אנלאק מיט פינגערפרינט אדער פעיס", ok -> {
+        AppLock.prompt(this, "לאג אריין מיט פינגערפרינט אדער פעיס", ok -> {
             prompting = false;
             if (ok) showCover(false);
             else autoPrompt = false;
@@ -182,7 +180,7 @@ public class MainActivity extends Activity {
         box.addView(sub, new android.widget.LinearLayout.LayoutParams(-1, -2));
 
         android.widget.Button b = new android.widget.Button(this);
-        b.setText("אנלאק");
+        b.setText("לאג אריין");
         b.setAllCaps(false);
         b.setTextSize(17);
         b.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);

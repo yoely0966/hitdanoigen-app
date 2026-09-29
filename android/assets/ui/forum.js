@@ -464,6 +464,7 @@ function chatScreen({ title, sub, av, menu, placeholder }) {
       <div class="wa-input">
         <textarea rows="1" placeholder="${esc(placeholder || 'שרייב א מעסעדזש…')}" dir="auto" enterkeyhint="enter"></textarea>
         <button class="wa-fmt" aria-label="פארמאטירן" title="Aa">Aa</button>
+        <button class="wa-pop" aria-label="גרויסער רעדאקטאר" title="גרויס">⤢</button>
       </div>
       <button class="wa-send" aria-label="שיק">${icon('send')}</button>
     </footer>`;
@@ -472,12 +473,79 @@ function chatScreen({ title, sub, av, menu, placeholder }) {
   const ta = el.querySelector('textarea');
   ta.oninput = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 150) + 'px'; el.querySelector('.wa-send').classList.toggle('ready', !!ta.value.trim()); };
   const bar = el.querySelector('.fmt-bar');
+  el.querySelector('.wa-pop').onclick = (e) => { e.preventDefault(); popEditor(el); };
   el.querySelector('.wa-fmt').onclick = (e) => { e.preventDefault(); bar.classList.toggle('hidden'); el.querySelector('.wa-fmt').classList.toggle('on'); ta.focus(); };
   // keep the keyboard open while tapping the formatting buttons
   bar.addEventListener('mousedown', (e) => e.preventDefault());
   bar.querySelectorAll('[data-f]').forEach((b) => (b.onclick = () => wrapSel(ta, b.dataset.f === '`' && ta.value.slice(ta.selectionStart, ta.selectionEnd).includes('\n') ? '```' : b.dataset.f)));
   bar.querySelectorAll('[data-l]').forEach((b) => (b.onclick = () => prefixLines(ta, b.dataset.l)));
   return el;
+}
+
+/**
+ * Full-screen editor for longer messages: big text area, the formatting toolbar always visible,
+ * and a live preview. "שיק" sends through the chat's own send button; "צוריק" keeps the draft.
+ */
+function popEditor(chatEl) {
+  const small = chatEl.querySelector('textarea');
+  const title = chatEl.querySelector('.wa-title')?.textContent || '';
+  const pop = document.createElement('div');
+  pop.className = 'wa-editor';
+  pop.innerHTML = `
+    <header class="wa-bar">
+      <button class="wa-icon" data-x aria-label="צוריק">${icon('back')}</button>
+      <div class="grow" style="min-width:0"><div class="wa-title">${esc(title)}</div><div class="wa-subt">שרייב מיט פארמאטירונג</div></div>
+      <button class="wa-icon" data-prev aria-label="פאָרבילד" title="פאָרבילד">${icon('eye')}</button>
+    </header>
+    <div class="fmt-bar ed">
+      <button data-f="*" title="באלד"><b>B</b></button>
+      <button data-f="_" title="איטאליק"><i>I</i></button>
+      <button data-f="~" title="דורכגעשטראכן"><s>S</s></button>
+      <button data-f="\`" title="קאוד"><code>&lt;/&gt;</code></button>
+      <button data-l="> " title="ציטאט">❝</button>
+      <button data-l="• " title="ליסט">•≡</button>
+      <button data-l="1. " title="נומערירטע ליסט">1.</button>
+    </div>
+    <textarea class="ed-text" dir="auto" placeholder="${esc(small.placeholder)}"></textarea>
+    <div class="ed-preview hidden"><div class="bub"><div class="txt"></div></div></div>
+    <footer class="ed-foot">
+      <span class="muted small" data-count></span>
+      <button class="btn wa-green ed-send">${icon('send')} שיק</button>
+    </footer>`;
+  document.body.appendChild(pop);
+  const ta = pop.querySelector('.ed-text');
+  const count = pop.querySelector('[data-count]');
+  ta.value = small.value;
+  const upd = () => { count.textContent = ta.value.trim() ? `${ta.value.trim().length} אותיות` : ''; };
+  ta.oninput = upd;
+  upd();
+  setTimeout(() => { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }, 50);
+  pop.querySelector('.fmt-bar').addEventListener('mousedown', (e) => e.preventDefault());
+  pop.querySelectorAll('[data-f]').forEach((b) => (b.onclick = () => wrapSel(ta, b.dataset.f === '`' && ta.value.slice(ta.selectionStart, ta.selectionEnd).includes('\n') ? '```' : b.dataset.f)));
+  pop.querySelectorAll('[data-l]').forEach((b) => (b.onclick = () => prefixLines(ta, b.dataset.l)));
+  const prev = pop.querySelector('.ed-preview');
+  pop.querySelector('[data-prev]').onclick = () => {
+    const on = prev.classList.toggle('hidden') === false;
+    if (on) prev.querySelector('.txt').innerHTML = richText(ta.value) || '<span class="muted">(ליידיג)</span>';
+    ta.classList.toggle('hidden', on);
+  };
+  const close = (keep) => {
+    small.value = keep ? ta.value : '';
+    small.oninput && small.oninput();
+    pop.remove();
+    stack.splice(stack.findIndex((x) => x.el === pop), 1);
+  };
+  pop.querySelector('[data-x]').onclick = () => close(true);
+  pop.querySelector('.ed-send').onclick = () => {
+    if (!ta.value.trim()) return;
+    small.value = ta.value;
+    small.oninput && small.oninput();
+    pop.remove();
+    stack.splice(stack.findIndex((x) => x.el === pop), 1);
+    chatEl.querySelector('.wa-send').click();
+  };
+  // the phone's back button closes the editor and keeps the draft
+  stack.push({ el: pop, onClose: () => { small.value = ta.value; small.oninput && small.oninput(); } });
 }
 
 /** Wraps the selected text (or the cursor) in a WhatsApp-style marker like *…*. */

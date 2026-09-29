@@ -142,7 +142,6 @@ public class WebActivity extends Activity {
     @Override
     protected void onPause() {
         super.onPause();
-        if (!AppLock.needed(this)) AppLock.lastSeen = System.currentTimeMillis();
     }
 
     @Override

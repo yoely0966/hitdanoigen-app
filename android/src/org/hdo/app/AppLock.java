@@ -21,13 +21,23 @@ public final class AppLock {
 
     static void setEnabled(Context c, boolean on) { Store.prefs(c).edit().putBoolean("lock", on).apply(); }
 
-    /** Unlocked in this process, and when any of our screens was last visible. */
+    /** Unlocked in this process; when the whole app last went to the background. */
     static boolean unlocked;
-    static long lastSeen;
+    static long backgroundAt;
 
-    /** True when a screen must ask again (lock on, and never unlocked or away longer than the grace time). */
+    /** True when a screen must ask (lock on and not unlocked since the app came back). */
     static boolean needed(Context c) {
-        return enabled(c) && (!unlocked || System.currentTimeMillis() - lastSeen > GRACE_MS);
+        return enabled(c) && !unlocked;
+    }
+
+    /** Called by App when the first of our screens starts again after the app was in the background. */
+    static void onForeground() {
+        if (backgroundAt > 0 && System.currentTimeMillis() - backgroundAt > GRACE_MS) unlocked = false;
+    }
+
+    /** Called by App when none of our screens is visible any more (home button, other app, screen off). */
+    static void onBackground() {
+        backgroundAt = System.currentTimeMillis();
     }
 
     /** True when the phone has a fingerprint/face enrolled (or a screen lock to fall back to). */
@@ -65,7 +75,7 @@ public final class AppLock {
         final boolean[] fired = {false};
         b.build().authenticate(new CancellationSignal(), a.getMainExecutor(), new BiometricPrompt.AuthenticationCallback() {
             @Override public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult res) {
-                if (!fired[0]) { fired[0] = true; unlocked = true; lastSeen = System.currentTimeMillis(); r.done(true); }
+                if (!fired[0]) { fired[0] = true; unlocked = true; r.done(true); }
             }
 
             @Override public void onAuthenticationError(int code, CharSequence msg) {

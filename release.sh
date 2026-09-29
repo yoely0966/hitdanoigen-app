@@ -29,7 +29,7 @@ bash android/build.sh
 APK="dist/HitDaneOigen.apk"
 
 git add -A
-git commit -m "Release v$new_name" -m "$notes" >/dev/null
+git commit -m "Release v$new_name" -m "$notes" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" >/dev/null
 git tag -a "v$new_name" -m "v$new_name"
 git push origin HEAD --tags
 
@@ -38,7 +38,10 @@ TOKEN="$(printf 'protocol=https\nhost=github.com\nusername=yoely0966\n\n' | git 
 [ -n "$TOKEN" ] || { echo "No GitHub sign-in found for github.com - push once so Git asks you to log in." >&2; exit 1; }
 api() { curl -fsS -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" "$@"; }
 
-body="$(node -e 'process.stdout.write(JSON.stringify({tag_name:process.argv[1],name:process.argv[1],body:process.argv[2],draft:false,prerelease:false}))' "v$new_name" "$notes")"
+# notes go through a UTF-8 file: Windows mangles Yiddish passed as a command-line argument
+NOTES_FILE="$(mktemp)"; printf '%s' "$notes" > "$NOTES_FILE"
+body="$(node -e 'const fs=require("fs");process.stdout.write(JSON.stringify({tag_name:process.argv[1],name:process.argv[1],body:fs.readFileSync(process.argv[2],"utf8"),draft:false,prerelease:false}))' "v$new_name" "$NOTES_FILE")"
+rm -f "$NOTES_FILE"
 rel="$(api -X POST "https://api.github.com/repos/$REPO/releases" -d "$body")"
 upload="$(printf '%s' "$rel" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).upload_url.replace(/\{.*$/,"")))')"
 api -X POST -H "Content-Type: application/vnd.android.package-archive" \

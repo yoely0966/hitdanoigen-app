@@ -21,10 +21,10 @@ const forum = {
   conv: null,
 };
 const FILTERS = [
-  { id: 'recent', t: 'לעצטע', path: '/forum/recent' },
+  { id: 'recent', t: 'לעצטע', path: '/forum?func=latest&sel=8760' },
   { id: 'mine', t: 'מיינע', path: '/forum/mylatest' },
   { id: 'noreplies', t: 'אומגעענטפערט', path: '/forum/noreplies' },
-  { id: 'unread', t: 'נישט געליינט', path: '/forum/recent' },
+  { id: 'unread', t: 'נישט געליינט', path: '/forum?func=latest&sel=8760' },
   { id: 'pinned', t: '📌 אנגעהאנגענע', path: null },
 ];
 /** Loose text match: case, niqqud, quotes and extra spaces don't matter; every word must appear. */
@@ -1230,6 +1230,11 @@ async function openCategory(c) {
     el.querySelector('.wa-list').innerHTML = `<div class="center muted" style="padding:40px">${errText(e)}</div>`;
   }
 }
+/** The site's "next page" links drop the time range; keep it. */
+function keepSel(next, path) {
+  const m = path.match(/[?&]sel=(-?\d+)/);
+  return next && m && !/[?&]sel=/.test(next) ? next + (next.includes('?') ? '&' : '?') + 'sel=' + m[1] : next;
+}
 function nextPage(doc) {
   const act = doc.querySelector('.kpagination li.active');
   const a = act?.nextElementSibling?.querySelector('a');
@@ -1266,7 +1271,8 @@ async function loadTopics(filter, force) {
   const l = forum.lists[filter];
   if (l && !force && Date.now() - l.at < 3 * 60_000) return;
   const f = FILTERS.find((x) => x.id === filter);
-  forum.lists[filter] = { rows: parseTopics(await site(f.path)), at: Date.now() };
+  const doc = await site(f.path);
+  forum.lists[filter] = { rows: parseTopics(doc), at: Date.now(), next: keepSel(nextPage(doc), f.path) };
 }
 
 function drawTopicsSection() {
@@ -1293,6 +1299,27 @@ function drawTopicsSection() {
           <span class="wa-top"><b>${esc(r.title)}</b><span class="wa-time">${esc(r.when.replace(/\s+\d.*$/, ''))}</span></span>
           <span class="wa-top"><span class="wa-sub"><b>${esc(r.by)}:</b> ${esc(r.text)}</span></span>
         </span></button>`).join('') : '<div class="center muted" style="padding:24px">גארנישט געפונען</div>') : '');
+  const lst = forum.lists[f === 'unread' ? 'recent' : f];
+  if (!q && f !== 'pinned' && lst?.next) {
+    box.insertAdjacentHTML('beforeend', '<button class="day-chip more" data-more>מער טעמעס ↓</button>');
+    const more = box.querySelector('[data-more]');
+    const loadMore = async () => {
+      if (more.dataset.busy) return;
+      more.dataset.busy = '1';
+      more.textContent = '...';
+      try {
+        const doc = await site(lst.next);
+        lst.rows = lst.rows.concat(parseTopics(doc).filter((r) => !lst.rows.some((x) => x.id === r.id)));
+        lst.next = keepSel(nextPage(doc), FILTERS.find((x) => x.id === f).path || '');
+        const top = box.parentElement ? document.scrollingElement.scrollTop : 0;
+        drawTopicsSection();
+        document.scrollingElement.scrollTop = top;
+      } catch (e) { toast(errText(e)); more.textContent = 'מער טעמעס ↓'; delete more.dataset.busy; }
+    };
+    more.onclick = loadMore;
+    // load the next page by itself when you scroll to the bottom
+    try { new IntersectionObserver((en, ob) => { if (en[0].isIntersecting) { ob.disconnect(); loadMore(); } }).observe(more); } catch {}
+  }
   box.querySelectorAll('[data-found]').forEach((b) => (b.onclick = () => {
     const r = found.rows[+b.dataset.found];
     openThread({ title: r.title, cat: r.cat, catid: r.catid, id: r.id, start: null, jumpTo: r.post || null });

@@ -78,9 +78,25 @@ function cheer(days) {
 /** 12-hour clock: 9:25 PM */
 const fmt12 = (d) => `${d.getHours() % 12 || 12}:${pad(d.getMinutes())} ${d.getHours() < 12 ? 'AM' : 'PM'}`;
 const fmtGreg = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+/** Hebrew-letter number: 18 -> י״ח, 787 -> תשפ״ז (15/16 as ט״ו / ט״ז). */
+function gematria(n) {
+  const ones = ['', 'א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ז', 'ח', 'ט'], tens = ['', 'י', 'כ', 'ל', 'מ', 'נ', 'ס', 'ע', 'פ', 'צ'], hund = ['', 'ק', 'ר', 'ש', 'ת'];
+  let out = '';
+  let h = Math.floor(n / 100); n %= 100;
+  while (h > 4) { out += 'ת'; h -= 4; }
+  out += hund[h];
+  if (n === 15) out += 'טו'; else if (n === 16) out += 'טז';
+  else out += tens[Math.floor(n / 10)] + ones[n % 10];
+  return out.length > 1 ? out.slice(0, -1) + '״' + out.slice(-1) : out + '׳';
+}
+/** י״ח תשרי תשפ״ז */
 function fmtHeb(d) {
-  try { return new Intl.DateTimeFormat('he-u-ca-hebrew', { day: 'numeric', month: 'long', year: 'numeric' }).format(d); }
-  catch { return ''; }
+  try {
+    const parts = new Intl.DateTimeFormat('he-u-ca-hebrew', { day: 'numeric', month: 'long', year: 'numeric' }).formatToParts(d);
+    const get = (t) => parts.find((x) => x.type === t)?.value || '';
+    const day = parseInt(get('day'), 10), year = parseInt(get('year'), 10);
+    return `${gematria(day)} ${get('month').replace(/^ב/, '')} ${gematria(year % 1000)}`;
+  } catch { return ''; }
 }
 function greeting() {
   const h = new Date().getHours();
@@ -313,6 +329,15 @@ function meRing(id) {
 }
 const dayPart = () => { const h = new Date().getHours(); return h < 5 || h >= 21 ? 'night' : h < 12 ? 'morning' : h < 17 ? 'day' : 'evening'; };
 
+/** Shrinks each matching label (together, so they stay the same size) until all fit on one line. */
+function fitOneLine(sel, min = 11) {
+  const els = [...document.querySelectorAll(sel)];
+  if (!els.length) return;
+  let size = parseFloat(getComputedStyle(els[0]).fontSize);
+  const over = () => els.some((e) => e.scrollWidth > e.clientWidth + 1);
+  while (size > min && over()) { size -= 0.5; els.forEach((e) => (e.style.fontSize = size + 'px')); }
+}
+
 function streakStart() {
   const s = state.user?.userData?.streakStartDate;
   return s ? new Date(s) : null;
@@ -343,6 +368,7 @@ function renderHome() {
       <div class="grow">
         <div class="ht-hello">${greeting()},</div>
         <div class="ht-name">${esc(name)}</div>
+        ${start ? `<div class="ht-since">דו האסט אנגעהויבן דיין רייזע אום ${esc(fmtHeb(start))} – <span class="ltr">${esc(fmtGreg(start))}</span></div>` : ''}
       </div>
       <button class="me-av" id="meBadge" aria-label="מיין פראפיל">${esc((name || '?').trim().charAt(0).toUpperCase())}</button>
     </header>
@@ -372,7 +398,7 @@ function renderHome() {
           <div class="bar"><i style="width:${Math.max(3, Math.round(goal.pct * 100))}%"></i></div>
         </div>
       </div>
-      ${start ? `<div class="since">🗓️ זינט ${esc(fmtHeb(start))} · <span class="ltr">${esc(fmtGreg(start))}</span></div>` : ''}
+
     </section>
 
     <section class="card checkin">
@@ -425,6 +451,7 @@ function renderHome() {
     <div class="pull">דאטא גלייך פון די וועבזייטל · <a href="#" id="bRefresh">ריפרעש</a></div>`;
 
   $('#bClean').onclick = () => checkInClean();
+  fitOneLine('.ci-tile b');
   $('#meBadge').onclick = () => profileMenu();
   $('#staffHome').onclick = () => N.openStaff();
   paintStaff();

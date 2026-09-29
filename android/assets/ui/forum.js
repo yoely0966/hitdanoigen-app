@@ -173,10 +173,17 @@ function openLink(href) {
   let url;
   try { url = new URL(href, SITE); } catch { return; }
   const h = url.hostname, p = url.searchParams, path = url.pathname;
+  if ((h === 'hitdanoigen.com' || h === 'www.hitdanoigen.com') && path.startsWith('/forum/profile')) {
+    return showProfile({ username: p.get('username') || '', forumUrl: url.href });
+  }
   if (h === 'hitdanoigen.com' || h === 'www.hitdanoigen.com') {
     if (path.startsWith('/forum') && !path.startsWith('/forum/profile')) {
       if (p.get('func') === 'view' && p.get('id')) {
         const post = url.hash.replace('#', '');
+        if (forum.thread && String(forum.thread.topic.id) === String(p.get('id'))) {
+          jumpToPost(post || p.get('id')).then((ok) => { if (!ok) toast('די מעלדונג איז נישט געפונען'); });
+          return;
+        }
         // no page given: a link to the first post means page 1, otherwise the newest page
         const start = p.get('start') != null ? p.get('start') : (!post || post === p.get('id')) && post ? '0' : null;
         return openThread({ title: '', cat: '', catid: p.get('catid'), id: p.get('id'), start, jumpTo: post || null });
@@ -357,10 +364,97 @@ function bindAi(box) {
   box.querySelectorAll('[data-bot]').forEach((x) => (x.onclick = () => openBot(x.dataset.bot)));
 }
 
+/* ---------- jump to the original of a reply / quote, and back ---------- */
+/** Scrolls `box` to `target`, flashes it, and shows a ↓ button that returns to where we were. */
+function jumpTo(box, target) {
+  if (!box || !target) return false;
+  const back = box.scrollTop;
+  target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  target.classList.remove('flash');
+  void target.offsetWidth;
+  target.classList.add('flash');
+  const screen = box.closest('.wa-screen');
+  let btn = screen.querySelector('.jump-back');
+  if (!btn) {
+    btn = document.createElement('button');
+    btn.className = 'jump-back';
+    btn.innerHTML = '↓';
+    btn.setAttribute('aria-label', 'צוריק אראפ');
+    screen.appendChild(btn);
+  }
+  btn.classList.remove('hidden');
+  btn.onclick = () => { box.scrollTo({ top: back, behavior: 'smooth' }); btn.classList.add('hidden'); };
+  // hide it once the user scrolls back down by themselves
+  const onScroll = () => { if (Math.abs(box.scrollTop - back) < 60) { btn.classList.add('hidden'); box.removeEventListener('scroll', onScroll); } };
+  setTimeout(() => box.addEventListener('scroll', onScroll), 700);
+  return true;
+}
+
+/** Live chat: the replied-to message (loads older messages until it is found). */
+async function jumpToChatMsg(cv, id) {
+  const box = cv.el.querySelector('.wa-msgs');
+  for (let i = 0; i < 8; i++) {
+    const t = box.querySelector(`[data-m="${CSS.escape(String(id))}"]`);
+    if (t) return jumpTo(box, t);
+    if (!cv.hasPrev) break;
+    toast('זוכט די מעסעדזש…');
+    const before = box.scrollHeight - box.scrollTop;
+    try { await fetchMsgs(cv, true); } catch { break; }
+    drawChat(cv, false);
+    box.scrollTop = box.scrollHeight - before;
+  }
+  toast('די מעסעדזש איז נישט געפונען');
+  return false;
+}
+
+/** Forum: a post in the open topic (loads earlier pages until it is found). */
+async function jumpToPost(pid) {
+  const t = forum.thread;
+  if (!t) return false;
+  const box = t.el.querySelector('.wa-msgs');
+  for (let i = 0; i < 6; i++) {
+    const el = box.querySelector(`[data-pid="${CSS.escape(String(pid))}"]`);
+    if (el) return jumpTo(box, el);
+    if (!(t.lowest > 0)) break;
+    toast('זוכט די מעלדונג…');
+    const start = Math.max(0, t.lowest - 50);
+    try {
+      const page = await fetchThreadPage(t.topic, start);
+      const before = box.scrollHeight - box.scrollTop;
+      t.pages.unshift(page);
+      t.lowest = start;
+      drawThread(false);
+      box.scrollTop = box.scrollHeight - before;
+    } catch { break; }
+  }
+  return false;
+}
+
 /* ---------- profiles: tap a name or photo ---------- */
 const USER_Q = 'id username bio age gender relationshipStatus currentStreak forumPostCount messageCount createdAt isOnline lastSeenAt botType';
 const GENDER = { Male: 'מאן', Female: 'פרוי', male: 'מאן', female: 'פרוי', 1: 'מאן', 2: 'פרוי' };
 const REL = { Married: 'חתונה געהאט', Single: 'בחור / נישט חתונה געהאט', Divorced: 'געגט', Widowed: 'אלמן', Engaged: 'א חתן', 1: 'בחור', 2: 'חתונה געהאט' };
+
+/** The forum's profile page, read into facts for the popup. */
+async function forumProfile(url) {
+  const d = await site(url.replace(SITE, ''));
+  const items = [...d.querySelectorAll('.kprofile-stats li, .kprofile-rightcol1 li, .kprofile-rightcol2 li')]
+    .map((e) => e.textContent.replace(/\s+/g, ' ').trim()).filter((x) => x && !/ברוכים הבאים/.test(x));
+  const pick = (re, ic, fmt) => { const x = items.find((t) => re.test(t)); return x ? [ic, fmt ? fmt(x) : x] : null; };
+  return {
+    avatar: d.querySelector('img.kavatar')?.getAttribute('src') || '',
+    rank: d.querySelector('.kprofile-rank')?.textContent.replace(/\s+/g, ' ').trim() || '',
+    facts: [
+      pick(/^מעלדונגען/, '📝'),
+      pick(/לייקס|געלייקט/, '👍'),
+      pick(/רעגיסטרירונג/, '📅'),
+      pick(/לעצטן באזוך/, '🕓'),
+      pick(/^מין:/, '👤'),
+      pick(/^לאקאציע/, '📍', (t) => (/נישט באוו/.test(t) ? null : t)),
+      pick(/פראפיל באזוכער/, '👁️'),
+    ].filter((f) => f && f[1]),
+  };
+}
 
 /** who = { id } (live chat) or { username } (forum). */
 async function showProfile(who) {
@@ -371,12 +465,9 @@ async function showProfile(who) {
     if (who.id) u = (await gql(`query U($i:Int!){ user(id:$i){ ${USER_Q} } }`, { i: who.id })).user;
     else if (who.username) u = (await gql(`query U($u:String!){ userByUsername(username:$u){ ${USER_Q} } }`, { u: who.username })).userByUsername;
   } catch {}
-  if (!u) {
-    closeModal();
-    if (who.forumUrl) N.openWeb(who.forumUrl, who.username || 'פראפייל');
-    else toast('דער פראפייל איז נישט צוגענגליך');
-    return;
-  }
+  const forumInfo = who.forumUrl ? await forumProfile(who.forumUrl).catch(() => null) : null;
+  if (!u && !forumInfo) { closeModal(); toast('דער פראפייל איז נישט צוגענגליך'); return; }
+  if (!u) u = { username: who.username || forumInfo.name || '', id: null };
   const me = u.id === forum.me;
   const bot = u.botType;
   const facts = [
@@ -386,23 +477,24 @@ async function showProfile(who) {
     REL[u.relationshipStatus] ? ['💍', REL[u.relationshipStatus]] : null,
     u.forumPostCount ? ['📝', `${u.forumPostCount} מעלדונגען אויפ'ן פארום`] : null,
     u.createdAt ? ['📅', `מיטגליד זינט ${fmtGreg(new Date(u.createdAt))}`] : null,
+    ...(forumInfo ? forumInfo.facts : []),
   ].filter(Boolean);
   const status = bot ? 'AI געהילף' : u.isOnline ? '🟢 אנליין יעצט' : u.lastSeenAt ? 'לעצט געזען ' + isoWhen(u.lastSeenAt, true) : '';
   openModal(`
     <div class="prof">
-      ${avatar('', u.username, 'wa-av prof-av', u.isOnline)}
+      ${avatar(forumInfo?.avatar || '', u.username, 'wa-av prof-av', u.isOnline)}
+      ${forumInfo?.rank ? `<div class="prof-rank">${esc(forumInfo.rank)}</div>` : ''}
       <h2>${esc(u.username)} ${bot ? '<span class="ai-tag">AI</span>' : ''}</h2>
       <div class="muted small">${esc(status)}</div>
       ${u.bio ? `<p class="prof-bio">${esc(u.bio)}</p>` : ''}
       ${facts.length ? `<div class="prof-facts">${facts.map(([e, t]) => `<div><span>${e}</span><span>${esc(t)}</span></div>`).join('')}</div>` : ''}
       <div class="btns">
-        ${me ? '' : `<button class="btn" id="pfMsg">${icon('chat')} שיק א מעסעדזש</button>`}
-        ${u.forumPostCount && !bot ? '<button class="btn line" id="pfForum">🌐 פארום פראפייל</button>' : ''}
+        ${me || !u.id ? '' : `<button class="btn" id="pfMsg">${icon('chat')} שיק א מעסעדזש</button>`}
         <button class="btn line" data-close>פארמאכן</button>
       </div>
     </div>`);
   $('#pfMsg') && ($('#pfMsg').onclick = () => { closeModal(); if (forum.conv && other(forum.conv.c).id === u.id) return; startChatWith(u); });
-  $('#pfForum') && ($('#pfForum').onclick = () => { closeModal(); N.openWeb(who.forumUrl || `${SITE}/forum/profile?func=profile&username=${encodeURIComponent(u.username)}`, u.username); });
+
 }
 
 /** The live chat: its own screen, opened from the round button above "new topic". */
@@ -792,7 +884,7 @@ function drawChat(cv, scrollBottom) {
     const rt = m.replyTo;
     html += `<div class="msg ${mine ? 'out' : 'in'}${cont ? ' cont' : ''}" data-m="${m.id}">
       <div class="bub">
-        ${rt ? `<blockquote><b>${rt.authorId === forum.me ? 'דו' : esc(o.username || '')}</b><br>${esc((rt.body || '').slice(0, 160))}</blockquote>` : ''}
+        ${rt ? `<blockquote class="rq" data-reply="${esc(rt.id)}"><b>${rt.authorId === forum.me ? 'דו' : esc(o.username || '')}</b><br>${esc((rt.body || '').slice(0, 160))}</blockquote>` : ''}
         <div class="txt">${gone ? '<i class="muted">🚫 די מעסעדזש איז אויסגעמעקט געווארן</i>' : m.type === 'Voice' ? '🎤 <i>קול-מעסעדזש – הער אויפ\'ן וועבזייטל</i>' : linkify(m.body || '')}</div>
         <div class="meta"><span>${fmt12(new Date(m.createdAt))}</span>${mine ? `<span class="ticks${m.isViewed ? ' seen' : ''}">✓✓</span>` : ''}</div>
         ${m.reaction ? `<span class="react">${reactionEmoji(m.reaction)}</span>` : ''}
@@ -817,6 +909,7 @@ function drawChat(cv, scrollBottom) {
     sendChat(cv);
   }));
   bindRich(box);
+  box.querySelectorAll('blockquote[data-reply]').forEach((q) => (q.onclick = (e) => { e.stopPropagation(); jumpToChatMsg(cv, q.dataset.reply); }));
   box.querySelectorAll('[data-m]').forEach((el) => {
     const m = cv.items.find((x) => String(x.id) === el.dataset.m);
     onLongPress(el.querySelector('.bub'), () => msgMenu(cv, m));

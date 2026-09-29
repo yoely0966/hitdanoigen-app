@@ -85,6 +85,10 @@ public class WebActivity extends Activity {
         s.setSupportMultipleWindows(false);
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
+        if (getIntent().getBooleanExtra("browserUA", false)) {
+            // Google sign-in refuses app-embedded browsers' identity; use the phone's normal Chrome one
+            s.setUserAgentString(s.getUserAgentString().replace("; wv", "").replaceAll("Version/[\\d.]+ ", ""));
+        }
 
         web.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
@@ -92,6 +96,7 @@ public class WebActivity extends Activity {
                 String host = u.getHost() == null ? "" : u.getHost();
                 String scheme = u.getScheme() == null ? "" : u.getScheme();
                 if ((scheme.equals("http") || scheme.equals("https")) && isSite(host)) return false;
+                if (getIntent().getBooleanExtra("capture", false) && (scheme.equals("http") || scheme.equals("https"))) return false;
                 // phone numbers, mail, other websites -> the phone's own apps
                 try { startActivity(new Intent(Intent.ACTION_VIEW, u)); } catch (Exception ignored) {}
                 return true;
@@ -136,6 +141,10 @@ public class WebActivity extends Activity {
     private void capture(WebView v, String url) {
         Uri u = Uri.parse(url);
         String path = u.getPath() == null ? "" : u.getPath();
+        if ("hitdanoigen.com".equals(u.getHost()) && !path.startsWith("/login") && !path.contains("/gyeuser/login")) {
+            v.loadUrl(Auth.APP + "/");
+            return;
+        }
         if (!"app.hitdanoigen.com".equals(u.getHost()) || path.startsWith("/signup") || path.startsWith("/signin")
                 || path.startsWith("/login") || path.startsWith("/verification") || path.startsWith("/onboarding")) return;
         v.evaluateJavascript("localStorage.getItem('token')", val -> {

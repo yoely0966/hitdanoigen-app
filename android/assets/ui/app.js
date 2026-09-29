@@ -129,6 +129,8 @@ const I = {
   pen: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
   back: '<path d="M5 12h14M13 6l6 6-6 6"/>',
   send: '<path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/>',
+  cap: '<path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1.7 2.7 3 6 3s6-1.3 6-3v-5"/>',
+  lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   refresh: '<path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15"/>',
 };
 const icon = (n, cls = 'i') => `<svg class="${cls}" viewBox="0 0 24 24">${I[n]}</svg>`;
@@ -179,6 +181,8 @@ function showLogin(msg) {
       <label class="check"><input id="lr" type="checkbox" checked>
         <span>בלייב איינגעלאגט<br><span class="muted small">דער פאסווארט ווערט געהאלטן ענקריפטעד נאר אויף דעם פאון, כדי די עפפ זאל זיך קענען אליין ריפרעשן.</span></span></label>
       <button id="lb" class="btn">לאג איין</button>
+      <div class="or-line"><span>אדער</span></div>
+      <button class="btn google" id="lGoogle"><svg class="g-logo" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.6-.4-3.5z"/></svg><span>לאג איין מיט Google</span></button>
       <button class="btn line" id="lSign" style="margin-top:12px">נייע אקאונט? שרייב זיך איין</button>
       <p class="center small" style="margin-top:14px"><a href="#" id="lf">פארגעסן פאסווארט?</a></p>
     </div>`;
@@ -186,6 +190,7 @@ function showLogin(msg) {
   $('#eye').onclick = () => { const s = pw.type === 'password'; pw.type = s ? 'text' : 'password'; $('#eye').innerHTML = icon(s ? 'eyeOff' : 'eye'); };
   $('#lf').onclick = (e) => { e.preventDefault(); N.openWeb(SITE + '/login', 'לאג איין'); };
   $('#lSign').onclick = () => N.signup();
+  $('#lGoogle').onclick = () => N.googleLogin();
   const submit = () => {
     const u = $('#lu').value.trim(), p = pw.value;
     if (!u || !p) { lerr('שרייב אריין יוזער-נעים און פאסווארט'); return; }
@@ -239,6 +244,7 @@ function showApp() {
 }
 function go(tab) {
   state.tab = tab;
+  if (tab !== 'home') $('#fabBubble')?.remove();
   document.querySelectorAll('#nav button').forEach((b) => b.classList.toggle('on', b.dataset.t === tab));
   window.scrollTo(0, 0);
   stopClock();
@@ -291,6 +297,7 @@ function paintFab() {
   b.innerHTML = 'נאכנישט אפדעיטעד היינט <b>👇</b>';
   b.onclick = () => { b.remove(); updateSheet2(); };
   document.body.appendChild(b);
+  setTimeout(() => b.remove(), 9000);
 }
 
 function streakStart() {
@@ -681,7 +688,7 @@ function renderChart() {
     <input class="search" id="q" placeholder="זוך א נאמען..." value="${esc(c.q)}" dir="auto">
     <div id="clist"><div class="spinner"></div></div>
     <div class="btns" style="margin-top:6px">
-      <button class="btn line" id="cWeb">${icon('globe')} עפן דעם טשארט אויפ'ן וועבזייטל</button>
+      <button class="btn line" id="cWeb">${icon('globe')} עפן דעם טשארט אויפ\'ן וועבזייטל</button>
       <button class="btn line" id="cRules">וויאזוי דאס ארבעט</button>
     </div>`;
   document.querySelectorAll('.seg button').forEach((b) => {
@@ -736,10 +743,15 @@ function drawChartList() {
         <button data-o="reset" class="danger">🔄 ריסעט</button>
       </div></div>`;
   }
+  if (!me && !q && c.seg !== 'woh') {
+    html += `<button class="card join-card" id="joinChart"><span class="jc-ic">📊</span><span class="grow"><b>שטעל זיך אויפ\'ן 90-טעג טשארט</b>
+      <span>דו ביסט נאך נישט אויפ\'ן טשארט – עס נעמט א האלבע מינוט</span></span>${icon('chev')}</button>`;
+  }
   const others = rows.filter((p) => !p.me || q);
   html += `<div class="section-title">${c.seg === 'woh' ? 'וואנט פון כבוד' : '90-טעג טשארט'} · ${others.length}</div>`;
   html += others.length ? `<div class="list">${others.slice(0, 400).map(personRow).join('')}</div>` : '<div class="card center muted">קיינער נישט געפונען</div>';
   box.innerHTML = html;
+  $('#joinChart') && ($('#joinChart').onclick = () => joinChartSheet(false));
   // the same options the site shows on your row, one tap each
   box.querySelectorAll('.row-opts [data-o]').forEach((b) => (b.onclick = async () => {
     const o = b.dataset.o;
@@ -799,9 +811,9 @@ function chartSettings(me) {
   openModal(`
     <h2>מיינע טשארט סעטינגס</h2>
     <div class="list" style="margin:8px 0 12px">
-      <div class="item"><span class="ic">👁️</span><span class="grow"><span class="t">פובליק</span><div class="s">אנדערע קענען זען מיין אינפארמאציע אויפ'ן טשארט</div></span>
+      <div class="item"><span class="ic">👁️</span><span class="grow"><span class="t">פובליק</span><div class="s">אנדערע קענען זען מיין אינפארמאציע אויפ\'ן טשארט</div></span>
         <label class="switch"><input type="checkbox" id="csPublic" ${me.isPublic !== false ? 'checked' : ''}><i></i></label></div>
-      <div class="item"><span class="ic">🔥</span><span class="grow"><span class="t">ווייז מיין שטרעקע אויפ'ן פארום</span><div class="s">נעבן דיינע מעלדונגען</div></span>
+      <div class="item"><span class="ic">🔥</span><span class="grow"><span class="t">ווייז מיין שטרעקע אויפ\'ן פארום</span><div class="s">נעבן דיינע מעלדונגען</div></span>
         <label class="switch"><input type="checkbox" id="csStreak" ${me.streakOnForum ? 'checked' : ''}><i></i></label></div>
       <button class="item" id="csLink"><span class="ic">🔗</span><span class="grow"><span class="t">מיין פארום-לינק</span><div class="s">${link ? esc(link.replace(/^https?:\/\//, '').slice(0, 48)) : 'נאך נישט צוגעלייגט – קלייב א טעמע'}</div></span>${icon('chev')}</button>
     </div>
@@ -824,7 +836,7 @@ function chartSettings(me) {
 function resetChart() {
   openModal(`
     <h2>ריסעט דעם טשארט?</h2>
-    <p>דאס מעקט אויס דיין שטרעקע און רעקארד אויפ'ן 90-טעג טשארט און וואנט פון כבוד, און מען הייבט אן פון דאס נייע. מען קען דאס נישט צוריקמאכן.</p>
+    <p>דאס מעקט אויס דיין שטרעקע און רעקארד אויפ\'ן 90-טעג טשארט און וואנט פון כבוד, און מען הייבט אן פון דאס נייע. מען קען דאס נישט צוריקמאכן.</p>
     <div class="btns"><button class="btn red" id="csResetYes">יא, ריסעט</button><button class="btn line" data-close>ניין, צוריק</button></div>`)
     || ($('#csResetYes').onclick = async () => {
       $('#csResetYes').disabled = true;
@@ -833,10 +845,57 @@ function resetChart() {
         closeModal();
         toast('דער טשארט איז ריסעט');
         refreshChartAfterEdit();
-        // the site asks a few setup questions for the new chart
-        N.openWeb(SITE + '/component/chart/profile/signup/step1', '90-טעג טשארט');
+        joinChartSheet(true);
       } catch (e) { toast(errText(e)); $('#csResetYes').disabled = false; }
     });
+}
+
+/** Put me on the 90-day chart (the site's "signup step 1": start date, longest streak, forum link). */
+function joinChartSheet(afterReset) {
+  const today = new Date();
+  const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  openModal(`
+    <div class="upd-hero">📊</div>
+    <h2>${afterReset ? 'א נייער טשארט' : "שטעל זיך אויפ\'ן טשארט"}</h2>
+    <p>${afterReset ? 'דער טשארט איז ריסעט. ענטפער די דריי פראגעס און דו ביסט צוריק אויפ\'ן טשארט.' : 'ענטפער די דריי פראגעס און דו ביסט אויפ\'ן 90-טעג טשארט.'}</p>
+    <label class="field"><span>ערשטער טאג ריין אין איצטיגע רייזע</span>
+      <input id="jcStart" class="input" type="date" dir="ltr" value="${ymd(today)}" max="${ymd(today)}"></label>
+    <div class="muted small" id="jcHeb" style="margin:-6px 4px 12px"></div>
+    <label class="field"><span>לענגסטע רייזע-שטרעקע (צאל פון טעג)</span>
+      <input id="jcLong" class="input" type="number" inputmode="numeric" min="0" dir="ltr" value="0"></label>
+    <label class="field"><span>לינק צו דיין טרעד אויפ\'ן פארום (ווען דו האסט)</span>
+      <input id="jcLink" class="input" dir="ltr" placeholder="https://hitdanoigen.com/forum?..."></label>
+    <div id="jcErr" class="err hidden"></div>
+    <div class="btns"><button class="btn" id="jcGo">📊 לייג מיך ארויף אויפ\'ן טשארט</button><button class="btn line" data-close>שפעטער</button></div>`);
+  const heb = () => { const v = $('#jcStart').value; $('#jcHeb').textContent = v ? fmtHeb(new Date(v + 'T12:00:00')) : ''; };
+  $('#jcStart').oninput = heb;
+  heb();
+  $('#jcGo').onclick = async () => {
+    const err = (m) => { const e = $('#jcErr'); e.innerHTML = m; e.classList.remove('hidden'); };
+    const start = $('#jcStart').value, long = $('#jcLong').value.trim() || '0';
+    let link = $('#jcLink').value.trim();
+    if (link && !/^https?:\/\//.test(link)) link = 'https://' + link;
+    if (!start) return err('קלייב דעם ערשטן ריינעם טאג');
+    $('#jcGo').disabled = true;
+    const body = `forum_link=${encodeURIComponent(link)}&recent_streak=${encodeURIComponent(long)}&start_of_journey=${encodeURIComponent(start)}`;
+    const post = (url, b) => new Promise((res) => { const id = ++rid; pending[id] = res; N.httpForm(id, url, b); });
+    try {
+      // 1) the site's own check (answers with the problems, or with a page when all is fine)
+      const chk = await post(SITE + '/component/chart/profile?view=profile&task=signup_save_step1&format=raw&ajax=true', body + '&ajax=true');
+      let e = null;
+      try { e = JSON.parse(chk.body); } catch {}
+      const msgs = e ? Object.values(e).filter(Boolean) : [];
+      if (msgs.length) { $('#jcGo').disabled = false; return err(msgs.map(esc).join('<br>')); }
+      // 2) save
+      const r = await post(SITE + '/index.php?option=com_chart&view=profile&task=signup_save_step1', body);
+      if (!r.ok) throw new Error(r.status === 0 ? 'offline' : 'http');
+      closeModal();
+      toast("✓ דו ביסט אויפ\'ן טשארט");
+      state.chart.c90 = null; state.chart.woh = null;
+      state.dash = null;
+      if (state.tab === 'chart') renderChart(); else if (state.tab === 'home') renderHome();
+    } catch (x) { $('#jcGo').disabled = false; err(errText(x)); }
+  };
 }
 
 /** Pick one of my own forum topics (or paste a link) as my forum link. */
@@ -937,15 +996,15 @@ function renderJournal(inChart) {
 /* ---------------- more / settings ---------------- */
 /** The site's "מער" menu. */
 const SECTIONS = [
-  { t: 'מאטיוואציע', e: '🏆', c: '#f59e0b', u: APP + '/motivation' },
-  { t: 'פלאנירונג', e: '📝', c: '#3b82f6', u: APP + '/planning' },
-  { t: 'קאנעקשן', e: '💬', c: '#10b981', u: APP + '/connection' },
-  { t: 'מיני-קורסן', e: '🎓', c: '#14b8a6', u: APP + '/mini-courses' },
-  { t: 'ווידעאס', e: '🎬', c: '#6366f1', u: APP + '/videos/categories' },
-  { t: 'טולבאקס', e: '🧰', c: '#8b5cf6', u: APP + '/toolbox' },
-  { t: 'פארום', e: '👥', c: '#f97316', go: () => go('forum') },
-  { t: '90 טעג טשארט', e: '📊', c: '#a855f7', go: () => { state.chart.seg = 'c90'; go('chart'); } },
-  { t: 'האנטבוך', e: '📖', c: '#ec4899', go: () => N.openHandbook() },
+  { t: 'מאטיוואציע', i: 'star', u: APP + '/motivation' },
+  { t: 'פלאנירונג', i: 'plan', u: APP + '/planning' },
+  { t: 'קאנעקשן', i: 'users', u: APP + '/connection' },
+  { t: 'מיני-קורסן', i: 'cap', u: APP + '/mini-courses' },
+  { t: 'ווידעאס', i: 'play', u: APP + '/videos/categories' },
+  { t: 'טולבאקס', i: 'tool', u: APP + '/toolbox' },
+  { t: 'פארום', i: 'forum', go: () => go('forum') },
+  { t: 'טשארט', i: 'chart', go: () => { state.chart.seg = 'c90'; go('chart'); } },
+  { t: 'האנטבוך', i: 'book', go: () => N.openHandbook() },
 ];
 
 const LINKS = [
@@ -965,59 +1024,73 @@ const LINKS = [
 function renderMore() {
   const s = JSON.parse(N.getSettings());
   const times = Array.isArray(s.times) && s.times.length ? s.times : ['21:00'];
+  const u = state.user || {};
+  const st0 = streakStart();
+  const days = st0 ? Math.max(0, Math.floor((Date.now() - st0) / 86400000)) : state.dash?.stats?.cleanDaysStreak || 0;
+  const lvl = levelFor(days);
+  const row = (id, ic, color, title, sub, right) => `<button class="srow" ${id ? `id="${id}"` : ''}>
+      <span class="sic" style="--c:${color}">${icon(ic)}</span>
+      <span class="grow"><span class="st">${title}</span>${sub ? `<span class="ss">${sub}</span>` : ''}</span>${right ?? icon('chev')}</button>`;
   view().innerHTML = `
     <div class="page-title">מער</div>
 
-    <div class="section-title">סעקיוריטי</div>
-    <section class="card">
-      <div class="row"><span class="grow"><b>לאק מיט פינגערפרינט / פעיס</b><br><span class="muted small">${N.lockAvailable()
-        ? 'די עפפ וועט פרעגן פאר דיין פינגערפרינט, פעיס אדער PIN יעדעס מאל ווען דו עפנסט זי'
-        : 'שטעל קודם צו א פינגערפרינט אדער פעיס אין די פאון סעטינגס'}</span></span>
-        <label class="switch"><input type="checkbox" id="lockOn" ${N.lockEnabled() ? 'checked' : ''} ${N.lockAvailable() || N.lockEnabled() ? '' : 'disabled'}><i></i></label></div>
-    </section>
-
-    <div class="section-title">רימיינדערס</div>
-    <section class="card">
-      <div class="row"><span class="grow"><b>רימיינד מיך צו אפדעיטן</b><br><span class="muted small">דעם 90-טעג טשארט / וואנט פון כבוד</span></span>
-        <label class="switch"><input type="checkbox" id="rOn" ${s.remind ? 'checked' : ''}><i></i></label></div>
-      <div id="rBody" class="${s.remind ? '' : 'hidden'}">
-        <div class="chips" id="rTimes">${times.map((t, i) => `<span class="chip"><input type="time" value="${esc(t)}" data-i="${i}"><button data-del="${i}" aria-label="אראפנעמען">✕</button></span>`).join('')}
-          ${times.length < 4 ? '<button class="chip" id="rAdd" style="padding:6px 14px">+ צולייגן</button>' : ''}</div>
-        <label class="check"><input type="checkbox" id="rSkip" ${s.skipIfDone !== false ? 'checked' : ''}><span>נישט דערמאנען אויב איך האב שוין אפדעיטעד היינט</span></label>
-        <label class="check"><input type="checkbox" id="rShab" ${s.skipShabbos !== false ? 'checked' : ''}><span>נישט אויף שבת <span class="muted small">(פרייטאג פון 3 אזייגער ביז זונטאג)</span></span></label>
-        <button class="btn sm line" id="rTest">${icon('bell')} שיק א טעסט</button>
-        ${N.notifAllowed() ? '' : '<div class="warn">נאטיפיקעישאנס זענען אפ – טורן זיי אן אין די סעטינגס צו באקומען רימיינדערס.</div>'}
-      </div>
-    </section>
-
-    <div class="section-title">ווידזשעט</div>
-    <section class="card">
-      <p style="margin:0 0 12px" class="muted small">דער ווידזשעט ווייזט דיינע ריינע טעג און לאזט דיר אפדעיטן דעם טשארט מיט איין דריק. ער ריפרעשט זיך אליין יעדע האלבע שעה.</p>
-      ${N.canPinWidget() ? `<button class="btn ghost" id="wPin">${icon('widget')} ${N.hasWidget() ? 'עד נאך א ווידזשעט' : 'עד צום האום-סקרין'}</button>`
-        : '<div class="note">האלט אן א ליידיגן פלאץ אויפ\'ן האום-סקרין ← ווידזשעטס ← היט דיינע אויגן.</div>'}
-    </section>
+    <button class="me-card2" id="meCard">
+      <span class="me-ring sm" style="--p:${Math.round(nextGoal(days).pct * 100)}"><span><b class="num">${days}</b><i>טעג</i></span></span>
+      <span class="grow"><b>${esc(u.username || N.username() || '')}</b><span>${lvl ? `שטאפל ${lvl} · ${esc(LEVELS[lvl - 1].n)}` : 'דיין רייזע הייבט זיך אן'}</span></span>
+      ${icon('chev')}
+    </button>
 
     <div class="section-title">פראגראם</div>
-    <div class="tiles">
-      ${SECTIONS.map((x, i) => `<button class="tile" data-sec="${i}" style="--tc:${x.c}"><span class="ti">${x.e}</span><b>${x.t}</b></button>`).join('')}
+    <div class="tiles2">
+      ${SECTIONS.map((x, i) => `<button class="tile2" data-sec="${i}"><span class="t2i">${icon(x.i)}</span><b>${x.t}</b></button>`).join('')}
     </div>
 
-    <div class="section-title">וועבזייטל</div>
-    <div class="list">${LINKS.map((l, i) => `<button class="item" data-l="${i}"><span class="ic">${icon(l.i)}</span><span class="grow"><span class="t">${l.t}</span>${l.s ? `<div class="s">${l.s}</div>` : ''}</span>${icon('chev')}</button>`).join('')}</div>
+    <div class="section-title">סעטינגס</div>
+    <div class="group">
+      <label class="srow">
+        <span class="sic" style="--c:#8b62ff">${icon('lock')}</span>
+        <span class="grow"><span class="st">פינגערפרינט / פעיס לאק</span><span class="ss">${N.lockAvailable() ? 'ביים עפענען די עפפ' : 'שטעל עס קודם צו אין די פאון'}</span></span>
+        <span class="switch"><input type="checkbox" id="lockOn" ${N.lockEnabled() ? 'checked' : ''} ${N.lockAvailable() || N.lockEnabled() ? '' : 'disabled'}><i></i></span>
+      </label>
+      <label class="srow">
+        <span class="sic" style="--c:#f59e0b">${icon('bell')}</span>
+        <span class="grow"><span class="st">רימיינדערס</span><span class="ss">צו אפדעיטן דעם טשארט</span></span>
+        <span class="switch"><input type="checkbox" id="rOn" ${s.remind ? 'checked' : ''}><i></i></span>
+      </label>
+      <div id="rBody" class="rbody ${s.remind ? '' : 'hidden'}">
+        <div class="chips" id="rTimes">${times.map((t, i) => `<span class="chip"><input type="time" value="${esc(t)}" data-i="${i}"><button data-del="${i}" aria-label="אראפנעמען">✕</button></span>`).join('')}
+          ${times.length < 4 ? '<button class="chip add" id="rAdd">+ צייט</button>' : ''}</div>
+        <label class="check"><input type="checkbox" id="rSkip" ${s.skipIfDone !== false ? 'checked' : ''}><span>נישט ווען שוין אפדעיטעד היינט</span></label>
+        <label class="check"><input type="checkbox" id="rShab" ${s.skipShabbos !== false ? 'checked' : ''}><span>נישט אויף שבת</span></label>
+        <button class="linkbtn" id="rTest">שיק א טעסט</button>
+        ${N.notifAllowed() ? '' : '<div class="warn">נאטיפיקעישאנס זענען אפ אין די פאון סעטינגס</div>'}
+      </div>
+      ${N.canPinWidget() ? row('wPin', 'widget', '#10b981', 'ווידזשעט', N.hasWidget() ? 'עד נאך איינס' : 'עד צום האום-סקרין') : row('', 'widget', '#10b981', 'ווידזשעט', 'האלט אן דעם האום-סקרין ← ווידזשעטס', '')}
+    </div>
 
     <div class="section-title">הילף</div>
-    <div class="list">
-      <button class="item" id="bStaff"><span class="ic">${icon('chat')}</span><span class="grow"><span class="t">מעסעדזשעס פון שטאב</span><div class="s">פריוואטע מעסעדזשעס מיט די שטאב פון היט דיינע אויגן</div></span><span id="staffCount"></span></button>
-      <a class="item" href="tel:+17185676100"><span class="ic">${icon('phone')}</span><span class="grow"><span class="t">האטליין</span><div class="s"><span class="ltr">(718) 567-6100</span></div></span></a>
-      <a class="item" href="mailto:gye.yid@hitdanoigen.com"><span class="ic">${icon('mail')}</span><span class="grow"><span class="t">אימעיל</span><div class="s"><span class="ltr">gye.yid@hitdanoigen.com</span></div></span></a>
+    <div class="group">
+      ${row('bStaff', 'chat', '#6366f1', 'מעסעדזשעס פון שטאב', '', '<span id="staffCount"></span>' + icon('chev'))}
+      ${row('bSos', 'sos', '#ef4444', 'אורגענט הילף', '')}
+      <a class="srow" href="tel:+17185676100"><span class="sic" style="--c:#0ea5e9">${icon('phone')}</span><span class="grow"><span class="st">האטליין</span><span class="ss ltr">(718) 567-6100</span></span></a>
+      <a class="srow" href="mailto:gye.yid@hitdanoigen.com"><span class="sic" style="--c:#64748b">${icon('mail')}</span><span class="grow"><span class="st">אימעיל</span><span class="ss ltr">gye.yid@hitdanoigen.com</span></span></a>
     </div>
 
-    <div class="section-title">עפפ</div>
-    <div class="list">
-      <button class="item" id="uCheck"><span class="ic">${icon('download')}</span><span class="grow"><span class="t">טשעק פאר אפדעיטס</span><div class="s" id="uState">ווערזשן ${esc(N.version())}</div></span>${icon('chev')}</button>
-      <button class="item" id="bOut"><span class="ic" style="background:var(--red-soft);color:var(--red)">${icon('out')}</span><span class="grow"><span class="t">לאג ארויס</span><div class="s">${esc(N.username() || '')}</div></span></button>
+    <div class="section-title">אקאונט</div>
+    <div class="group">
+      ${row('bAcct', 'gear', '#64748b', 'אקאונט סעטינגס', 'פראפיל, אימעיל, פאסווארט')}
+      ${row('bDonate', 'heart', '#ec4899', 'העלפט אונז', '')}
+      ${row('bSite', 'globe', '#0ea5e9', 'דער גאנצער וועבזייטל', '')}
+      ${row('uCheck', 'download', '#8b62ff', 'טשעק פאר אפדעיטס', `<span id="uState">ווערזשן ${esc(N.version())}</span>`)}
+      <button class="srow danger" id="bOut"><span class="sic" style="--c:#ef4444">${icon('out')}</span><span class="grow"><span class="st">לאג ארויס</span><span class="ss">${esc(N.username() || '')}</span></span></button>
     </div>
-    <p class="center muted small">א פריוואטע עפפ פאר hitdanoigen.com · אלע דאטא בלייבט אויפ'ן וועבזייטל</p>`;
+    <p class="center muted small" style="margin-top:18px">היט דיינע אויגן · ${esc(N.version())}</p>`;
+
+  $('#meCard').onclick = () => profileMenu();
+  $('#bSos').onclick = () => N.openWeb(APP + '/sos', 'אורגענט הילף');
+  $('#bAcct').onclick = () => N.openWeb(APP + '/settings/profile', 'אקאונט סעטינגס');
+  $('#bDonate').onclick = () => N.openWeb(SITE + '/donate', 'העלפט אונז');
+  $('#bSite').onclick = () => N.openWeb(APP + '/', 'היט דיינע אויגן');
 
   const save = () => {
     const ts = [...document.querySelectorAll('#rTimes input[type=time]')].map((x) => x.value).filter(Boolean);

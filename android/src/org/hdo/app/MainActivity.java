@@ -367,6 +367,13 @@ public class MainActivity extends Activity {
                     .putExtra("url", Auth.APP + "/").putExtra("title", "מעסעדזשעס פון שטאב").putExtra("js", OPEN_MESSENGER)));
         }
 
+        /** "Continue with Google": the forum's own Google login, then the login is picked up. */
+        @JavascriptInterface public void googleLogin() {
+            runOnUiThread(() -> startActivity(new Intent(MainActivity.this, WebActivity.class)
+                    .putExtra("url", Auth.SITE + "/component/gyeuser/login/googleRedirect?return=aW5kZXgucGhw")
+                    .putExtra("title", "לאג איין מיט Google").putExtra("capture", true).putExtra("browserUA", true)));
+        }
+
         @JavascriptInterface public void openHandbook() {
             runOnUiThread(() -> startActivity(new Intent(MainActivity.this, ReaderActivity.class)));
         }

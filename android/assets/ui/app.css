@@ -476,3 +476,33 @@ svg.i { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-widt
 .rbody .chips { margin: 10px 0 6px; }
 .chip.add { padding: 6px 14px; }
 .linkbtn { color: var(--accent); font-weight: 700; font-size: 14px; padding: 4px 2px; }
+
+/* home top: the site's sky banner, tinted by the time of day */
+.home-top.sky { position: relative; overflow: hidden; margin: 6px 0 14px; padding: 22px 18px; border-radius: 24px; color: #fff;
+  background: url(img/hero-bg.webp) center top / cover no-repeat, #5b8ad6; box-shadow: 0 8px 24px rgba(60,90,160,.25); }
+.home-top.sky::before { content: ""; position: absolute; inset: 0; pointer-events: none; }
+.home-top.sky.morning::before { background: linear-gradient(135deg, rgba(255,214,150,.28), rgba(255,255,255,0) 60%); }
+.home-top.sky.day::before { background: linear-gradient(180deg, rgba(0,0,0,0), rgba(20,40,90,.12)); }
+.home-top.sky.evening::before { background: linear-gradient(160deg, rgba(255,140,90,.45), rgba(139,98,255,.35)); }
+.home-top.sky.night::before { background: linear-gradient(170deg, rgba(10,16,48,.78), rgba(60,40,130,.6)); }
+.home-top.sky > * { position: relative; }
+.home-top.sky .ht-hello { color: rgba(255,255,255,.92); text-shadow: 0 1px 3px rgba(0,0,0,.25); }
+.home-top.sky .ht-name { color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,.3); }
+.home-top.sky .me-ring { box-shadow: 0 2px 10px rgba(0,0,0,.2); }
+
+/* sheets: pull down to close */
+#modal .grab { padding: 10px 0; background-clip: content-box; box-sizing: content-box; margin: -6px auto 8px; cursor: grab; }
+#modal .sheet { overscroll-behavior: contain; will-change: transform; }
+.closing { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; justify-content: center; background: rgba(15,12,30,0); transition: background .2s; pointer-events: none; }
+.closing .sheet { background: var(--card); width: 100%; max-width: 560px; border-radius: 28px 28px 0 0; padding: 10px 20px calc(22px + env(safe-area-inset-bottom)); max-height: 92vh; overflow: hidden; }
+
+/* hero: counter ring + stacked clock side by side */
+.ring-row { position: relative; display: flex; align-items: center; justify-content: center; gap: 18px; margin: 4px 0 14px; }
+.ring-row .ring-wrap { width: 168px; height: 168px; margin: 0; flex: none; }
+.ring-row .days { font-size: 58px; }
+.ring-row .clock2 { flex-direction: column; justify-content: space-between; height: 168px; margin: 0; gap: 0; }
+.ring-row .clock2 span { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 104px; padding: 10px 14px; border-radius: 16px; font-size: 13px; }
+.ring-row .clock2 b { font-size: 22px; font-weight: 800; }
+.me-av { width: 50px; height: 50px; border-radius: 50%; flex: none; display: grid; place-items: center; font-size: 21px; font-weight: 800;
+  background: rgba(255,255,255,.92); color: var(--accent); box-shadow: 0 2px 10px rgba(0,0,0,.2); }
+.me-av:active { transform: scale(.95); }

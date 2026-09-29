@@ -300,6 +300,19 @@ function paintFab() {
   setTimeout(() => b.remove(), 9000);
 }
 
+/** Clean days so far (from the streak start, or the site's own count). */
+function myDays() {
+  const st0 = streakStart();
+  return st0 ? Math.max(0, Math.floor((Date.now() - st0) / 86400000)) : state.dash?.stats?.cleanDaysStreak || 0;
+}
+/** The little progress ring (days + ring to the next goal) that opens my profile. */
+function meRing(id) {
+  const d = myDays();
+  const lvl = levelFor(d);
+  return `<button class="me-ring" id="${id}" aria-label="מיין פראפיל" style="--p:${Math.round(nextGoal(d).pct * 100)}"><span><b class="num">${d}</b><i>${lvl ? esc(LEVELS[lvl - 1].n) : 'טעג'}</i></span></button>`;
+}
+const dayPart = () => { const h = new Date().getHours(); return h < 5 || h >= 21 ? 'night' : h < 12 ? 'morning' : h < 17 ? 'day' : 'evening'; };
+
 function streakStart() {
   const s = state.user?.userData?.streakStartDate;
   return s ? new Date(s) : null;
@@ -326,18 +339,20 @@ function renderHome() {
   view().innerHTML = `
     ${state.update?.available ? `<button class="banner" id="updBanner" style="width:100%">${icon('download')} <span class="grow">א נייע ווערזשן (${esc(state.update.latest)}) איז גרייט</span>${icon('chev')}</button>` : ''}
     <button class="staff-home hidden" id="staffHome"><span class="sp-av">ש</span><span class="grow"><b></b><span>דריק צו לייענען</span></span>${icon('chev')}</button>
-    <header class="home-top">
+    <header class="home-top sky ${dayPart()}">
       <div class="grow">
         <div class="ht-hello">${greeting()},</div>
         <div class="ht-name">${esc(name)}</div>
       </div>
-      <button class="me-ring" id="meBadge" aria-label="מיין פראפיל" style="--p:${Math.round(goal.pct * 100)}">
-        <span><b class="num">${days}</b><i>${lvl ? esc(LEVELS[lvl - 1].n) : 'טעג'}</i></span>
-      </button>
+      <button class="me-av" id="meBadge" aria-label="מיין פראפיל">${esc((name || '?').trim().charAt(0).toUpperCase())}</button>
     </header>
     <section class="hero hero2">
       <span class="blob b1"></span><span class="blob b2"></span>
       <div class="cheer">${esc(cheer(days))}</div>
+      <div class="ring-row">
+      <div class="clock2 num">
+        <span><b id="cH">00</b> שעות</span><span><b id="cM">00</b> מינוט</span><span><b id="cS">00</b> סעק</span>
+      </div>
       <div class="ring-wrap">
         <svg class="ring" viewBox="0 0 120 120" aria-hidden="true">
           <circle cx="60" cy="60" r="52" class="ring-bg"/>
@@ -348,8 +363,6 @@ function renderHome() {
           <div class="days-label">${days === 1 ? 'טאג ריין' : 'טעג ריין'}</div>
         </div>
       </div>
-      <div class="clock2 num">
-        <span><b id="cH">00</b> שעות</span><span><b id="cM">00</b> מינוט</span><span><b id="cS">00</b> סעק</span>
       </div>
       <div class="next">
         ${goal.at ? `<img src="${awardImg(Math.min(LEVELS.length, lvl + 1))}" alt="" onerror="this.style.visibility='hidden'">` : ''}
@@ -622,6 +635,18 @@ function staffPopup(n) {
   p.className = 'staff-pop';
   p.innerHTML = `<span class="sp-av">ש</span><span class="grow"><b>${n === 1 ? 'א נייע מעסעדזש פון שטאב' : n + ' נייע מעסעדזשעס פון שטאב'}</b><span>דריק צו לייענען און ענטפערן</span></span><span class="sp-x" data-x>✕</span>`;
   p.onclick = (e) => { p.remove(); if (!e.target.closest('[data-x]')) N.openStaff(); };
+  let x0 = 0, y0 = 0;
+  p.addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
+  p.addEventListener('touchmove', (e) => {
+    const dx = e.touches[0].clientX - x0, dy = e.touches[0].clientY - y0;
+    p.style.transform = Math.abs(dx) > dy ? `translateX(${dx}px)` : `translateY(${Math.max(0, dy)}px)`;
+    p.style.opacity = String(1 - Math.min(0.8, Math.max(Math.abs(dx), dy) / 200));
+  }, { passive: true });
+  p.addEventListener('touchend', (e) => {
+    const t = e.changedTouches[0], dx = t.clientX - x0, dy = t.clientY - y0;
+    if (Math.abs(dx) > 90 || dy > 60) { e.preventDefault(); p.remove(); return; }
+    p.style.transform = ''; p.style.opacity = '';
+  });
   document.body.appendChild(p);
   setTimeout(() => p.remove(), 12000);
 }
@@ -634,8 +659,50 @@ function openModal(html) {
   m.innerHTML = `<div class="sheet"><div class="grab"></div>${html}</div>`;
   m.onclick = (e) => { if (e.target === m || e.target.closest('[data-close]')) closeModal(); };
   document.body.appendChild(m);
+  dragToClose(m.querySelector('.sheet'), () => closeModal(true));
 }
-function closeModal() { $('#modal')?.remove(); }
+function closeModal(animated) {
+  const m = $('#modal');
+  if (!m) return;
+  if (!animated) return m.remove();
+  m.id = '';
+  m.classList.add('closing');
+  const sh = m.querySelector('.sheet');
+  sh.style.transition = 'transform .2s ease';
+  sh.style.transform = 'translateY(100%)';
+  setTimeout(() => m.remove(), 200);
+}
+
+/** Pull a bottom sheet down to close it (only when it's scrolled to the top, like the phone's own sheets). */
+function dragToClose(sheet, close) {
+  if (!sheet) return;
+  let y0 = 0, dy = 0, t0 = 0, drag = false, can = false;
+  sheet.addEventListener('touchstart', (e) => {
+    const inField = e.target.closest('textarea, input, select, [contenteditable], .no-drag');
+    can = !inField && sheet.scrollTop <= 0;
+    y0 = e.touches[0].clientY; dy = 0; t0 = Date.now(); drag = false;
+  }, { passive: true });
+  sheet.addEventListener('touchmove', (e) => {
+    if (!can) return;
+    dy = e.touches[0].clientY - y0;
+    if (!drag && dy > 8 && sheet.scrollTop <= 0) { drag = true; sheet.style.transition = 'none'; }
+    if (!drag) { if (dy < -4) can = false; return; }
+    if (e.cancelable) e.preventDefault();
+    sheet.style.transform = `translateY(${Math.max(0, dy)}px)`;
+    sheet.parentElement.style.background = `rgba(15, 12, 30, ${Math.max(0, 0.45 - dy / 900)})`;
+  }, { passive: false });
+  const end = () => {
+    if (!drag) return;
+    drag = false;
+    const fast = dy > 50 && Date.now() - t0 < 250;
+    if (dy > Math.min(140, sheet.offsetHeight / 3) || fast) return close();
+    sheet.style.transition = 'transform .2s ease';
+    sheet.style.transform = '';
+    sheet.parentElement.style.background = '';
+  };
+  sheet.addEventListener('touchend', end);
+  sheet.addEventListener('touchcancel', end);
+}
 
 /* ---------------- chart / wall of honor ---------------- */
 function parseChart(doc) {

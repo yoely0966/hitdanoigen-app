@@ -24,8 +24,37 @@ const FILTERS = [
   { id: 'recent', t: 'לעצטע', path: '/forum/recent' },
   { id: 'mine', t: 'מיינע', path: '/forum/mylatest' },
   { id: 'noreplies', t: 'אומגעענטפערט', path: '/forum/noreplies' },
+  { id: 'unread', t: 'נישט געליינט', path: '/forum/recent' },
   { id: 'pinned', t: '📌 אנגעהאנגענע', path: null },
 ];
+/** Loose text match: case, niqqud, quotes and extra spaces don't matter; every word must appear. */
+const norm = (x) => String(x || '').toLowerCase().replace(/[\u0591-\u05C7]/g, '').replace(/["'״׳`]/g, '').replace(/\s+/g, ' ').trim();
+function matches(q, ...fields) {
+  const words = norm(q).split(' ').filter(Boolean);
+  if (!words.length) return true;
+  const hay = norm(fields.join(' '));
+  return words.every((w) => hay.includes(w));
+}
+
+/** Kunena search over the whole forum (posts' text too), newest first. */
+async function searchForum(q) {
+  const d = await site('/forum?func=search&q=' + encodeURIComponent(q) + '&titleonly=0&searchdate=365&sortby=lastpost&order=dec&limit=30&childforums=1');
+  return [...d.querySelectorAll('.ksearchresult .kbody table table')].map((tb) => {
+    const a = tb.querySelector('.kresult-title a');
+    if (!a) return null;
+    const href = a.getAttribute('href');
+    const pr = qs(href);
+    return {
+      title: a.textContent.replace(/^ענטפער:\s*/, '').replace(/\s+/g, ' ').trim(),
+      id: pr.id, catid: pr.catid, post: (href.split('#')[1] || ''),
+      by: tb.querySelector('.kresultauthor a')?.textContent.trim() || '',
+      text: tb.querySelector('.kmsgtext')?.textContent.replace(/\s+/g, ' ').replace(/^.{0,60}?געשריבן on .{0,40}?(AM|PM):?\s*/, '').trim().slice(0, 160) || '',
+      cat: tb.querySelector('.resultcat a')?.textContent.trim() || '',
+      when: tb.querySelector('.kmsgdate')?.textContent.replace(/\s+/g, ' ').trim() || '',
+    };
+  }).filter(Boolean);
+}
+
 const REACTIONS = [
   ['Like', '👍'], ['Heart', '❤️'], ['Clap', '👏'], ['Fire', '🔥'], ['Smile', '😊'], ['Love', '😍'], ['Think', '🤔'], ['Calm', '😌'], ['Dislike', '👎'],
 ];
@@ -228,6 +257,38 @@ function actionSheet(title, items) {
     `<button class="item" data-a="${i}"><span class="ic">${it.icon}</span><span class="grow"><span class="t">${esc(it.t)}</span>${it.s ? `<div class="s">${esc(it.s)}</div>` : ''}</span></button>`).join('')}</div>`);
   document.querySelectorAll('#modal [data-a]').forEach((b) => (b.onclick = () => { closeModal(); items[+b.dataset.a].run(); }));
 }
+/** Drag a message sideways: it follows the finger, and past ~64px it triggers `fn` (reply). */
+function onSwipe(row, fn) {
+  const bub = row.querySelector('.bub');
+  if (!bub) return;
+  let x0 = 0, y0 = 0, dx = 0, active = false, locked = false;
+  row.addEventListener('touchstart', (e) => { const t = e.touches[0]; x0 = t.clientX; y0 = t.clientY; dx = 0; active = true; locked = false; }, { passive: true });
+  row.addEventListener('touchmove', (e) => {
+    if (!active) return;
+    const t = e.touches[0];
+    const mx = t.clientX - x0, my = t.clientY - y0;
+    if (!locked) {
+      if (Math.abs(my) > 10 && Math.abs(my) > Math.abs(mx)) { active = false; return; } // it's a scroll
+      if (Math.abs(mx) > 10) locked = true;
+    }
+    if (!locked) return;
+    dx = Math.max(-90, Math.min(90, mx));
+    bub.style.transform = `translateX(${dx}px)`;
+    row.classList.toggle('swipe-ready', Math.abs(dx) > 64);
+  }, { passive: true });
+  const end = () => {
+    if (!active) return;
+    active = false;
+    bub.style.transition = 'transform .18s ease';
+    bub.style.transform = '';
+    setTimeout(() => (bub.style.transition = ''), 200);
+    row.classList.remove('swipe-ready');
+    if (locked && Math.abs(dx) > 64) { try { navigator.vibrate && navigator.vibrate(12); } catch {} fn(); }
+  };
+  row.addEventListener('touchend', end);
+  row.addEventListener('touchcancel', end);
+}
+
 function onLongPress(el, fn) {
   let t = 0;
   el.addEventListener('touchstart', () => { t = setTimeout(() => { t = -1; fn(); }, 480); }, { passive: true });
@@ -243,22 +304,30 @@ function renderForum() {
   if (!['groups', 'topics'].includes(forum.section)) forum.section = 'groups';
   const sec = forum.section;
   view().innerHTML = `
-    <div class="wa-head"><div class="wa-h1">טשעטס</div>
-      <button class="wa-icon" id="fRef" aria-label="ריפרעש">${icon('refresh')}</button></div>
+    <div class="wa-head center-head"><button class="wa-icon" id="fRef" aria-label="ריפרעש">${icon('refresh')}</button>
+      <div class="wa-h1">טשעטס</div>${meRing('fMe')}</div>
     <div class="wa-tabs">
       <button data-s="groups" class="${sec === 'groups' ? 'on' : ''}">גרופעס</button>
       <button data-s="topics" class="${sec === 'topics' ? 'on' : ''}">טעמעס</button>
     </div>
-    <div class="wa-search">${icon('search')}<input id="fq" placeholder="זוך..." value="${esc(forum.q)}" dir="auto"></div>
+    <div class="wa-search">${icon('search')}<input id="fq" placeholder="${sec === 'groups' ? 'זוך א גרופע...' : 'זוך אין אלע טעמעס און מעלדונגען...'}" value="${esc(forum.q)}" dir="auto"><button class="wa-clear${forum.q ? '' : ' hidden'}" id="fqX" aria-label="אויסמעקן">✕</button></div>
     <div id="fsec"><div class="spinner"></div></div>
     <button class="wa-fab2 ai" id="fAi" aria-label="AI געהילף"><span style="font-size:19px">🤖</span><span class="lbl">AI געהילף</span></button>
     <button class="wa-fab2" id="fLive" aria-label="לייוו טשעט">${icon('chat')}<span class="lbl">לייוו טשעט</span>${forum.unread ? `<span class="wa-badge fabb">${forum.unread > 99 ? '99+' : forum.unread}</span>` : ''}</button>
     <button class="wa-fab" id="fNew" aria-label="נייע טעמע">${icon('pen')}</button>`;
   document.querySelectorAll('.wa-tabs button').forEach((b) => (b.onclick = () => { forum.section = b.dataset.s; forum.q = ''; renderForum(); }));
-  $('#fq').oninput = (e) => { forum.q = e.target.value; drawSection(); };
+  $('#fq').oninput = (e) => {
+    forum.q = e.target.value;
+    $('#fqX').classList.toggle('hidden', !forum.q);
+    drawSection();
+    clearTimeout(forum.qt);
+    if (forum.section === 'topics' && norm(forum.q).length >= 2) forum.qt = setTimeout(runSearch, 600);
+  };
+  $('#fqX').onclick = () => { forum.q = ''; forum.found = null; $('#fq').value = ''; $('#fqX').classList.add('hidden'); drawSection(); };
   $('#fLive').onclick = () => openLiveChats();
   $('#fAi').onclick = () => aiSheet();
   $('#fNew').onclick = () => newTopicSheet();
+  $('#fMe').onclick = () => profileMenu();
   $('#fRef').onclick = () => { forum.lists = {}; forum.cats = null; forum.convs = null; renderForum(); };
   loadSection();
 }
@@ -411,11 +480,13 @@ async function jumpToChatMsg(cv, id) {
 async function jumpToPost(pid) {
   const t = forum.thread;
   if (!t) return false;
+  if (t.busy) { toast('א מאמענט…'); return true; }
   const box = t.el.querySelector('.wa-msgs');
   for (let i = 0; i < 6; i++) {
     const el = box.querySelector(`[data-pid="${CSS.escape(String(pid))}"]`);
     if (el) return jumpTo(box, el);
     if (!(t.lowest > 0)) break;
+    t.busy = true;
     toast('זוכט די מעלדונג…');
     const start = Math.max(0, t.lowest - 50);
     try {
@@ -423,10 +494,12 @@ async function jumpToPost(pid) {
       const before = box.scrollHeight - box.scrollTop;
       t.pages.unshift(page);
       t.lowest = start;
+      t.busy = false;
       drawThread(false);
       box.scrollTop = box.scrollHeight - before;
-    } catch { break; }
+    } catch { t.busy = false; break; }
   }
+  t.busy = false;
   return false;
 }
 
@@ -508,11 +581,18 @@ function openLiveChats() {
       <div class="grow" style="min-width:0"><div class="wa-title">לייוו טשעט</div><div class="wa-subt" data-online></div></div>
       <button class="wa-icon" data-ref aria-label="ריפרעש">${icon('refresh')}</button>
     </header>
-    <div class="wa-search" style="margin:10px 14px 6px">${icon('search')}<input placeholder="זוך א טשעט..." dir="auto"></div>
+    <div class="wa-search" style="margin:10px 14px 6px">${icon('search')}<input placeholder="זוך א נאמען אדער א מעסעדזש..." dir="auto"></div>
+    <div class="wa-chips" data-lf>${[['all', 'אלע'], ['unread', 'נישט געליינט'], ['pinned', '📌 אנגעהאנגען'], ['online', '🟢 אנליין']].map(([k, t]) => `<button data-k="${k}" class="${k === 'all' ? 'on' : ''}">${t}</button>`).join('')}</div>
     <div class="wa-list"><div class="spinner"></div></div>
     <button class="wa-fab in-screen" data-new aria-label="נייער טשעט">${icon('pen')}</button>`;
   forum.liveEl = el;
   forum.liveQ = '';
+  forum.liveF = 'all';
+  el.querySelectorAll('[data-lf] button').forEach((b) => (b.onclick = () => {
+    forum.liveF = b.dataset.k;
+    el.querySelectorAll('[data-lf] button').forEach((x) => x.classList.toggle('on', x === b));
+    drawConvs();
+  }));
   el.querySelector('[data-back]').onclick = () => popScreen();
   el.querySelector('[data-new]').onclick = () => newChatSheet();
   el.querySelector('input').oninput = (e) => { forum.liveQ = e.target.value; drawConvs(); };
@@ -535,7 +615,9 @@ function drawConvs() {
   const q = (forum.liveQ || '').trim().toLowerCase();
   const rows = forum.convs.rows
     .filter((c) => !c.conversationToUser?.isHidden)
-    .filter((c) => !q || (other(c).username || '').toLowerCase().includes(q) || (c.lastMessage?.body || '').toLowerCase().includes(q))
+    .filter((c) => matches(q, other(c).username || '', c.lastMessage?.body || ''))
+    .filter((c) => { const lf = forum.liveF || 'all';
+      return lf === 'all' || (lf === 'unread' && c.unreadMessageCount > 0) || (lf === 'pinned' && c.conversationToUser?.isPinned) || (lf === 'online' && other(c).isOnline); })
     .sort((a, b) => (b.conversationToUser?.isPinned ? 1 : 0) - (a.conversationToUser?.isPinned ? 1 : 0)
       || new Date(b.lastMessage?.createdAt || 0) - new Date(a.lastMessage?.createdAt || 0));
   const onl = forum.online;
@@ -554,7 +636,7 @@ function drawConvs() {
             ${cu.isMuted ? '<span class="wa-ic">🔕</span>' : ''}${cu.isPinned ? '<span class="wa-ic">📌</span>' : ''}
             ${c.unreadMessageCount ? `<span class="wa-badge">${c.unreadMessageCount}</span>` : ''}</span>
         </span></button>`;
-    }).join('') : `<div class="center muted" style="padding:40px">${q ? 'גארנישט געפונען' : 'נאך קיין טשעטס. דריק אויפ\'ן קנעפל אונטן צו אנהייבן.'}</div>`}`;
+    }).join('') : `<div class="center muted" style="padding:40px">${q || (forum.liveF && forum.liveF !== 'all') ? 'גארנישט געפונען' : 'נאך קיין טשעטס. דריק אויפ\'ן קנעפל אונטן צו אנהייבן.'}</div>`}`;
   box.querySelectorAll('[data-c]').forEach((b) => {
     const c = forum.convs.rows.find((x) => String(x.id) === b.dataset.c);
     b.onclick = () => openConv(c);
@@ -913,6 +995,7 @@ function drawChat(cv, scrollBottom) {
   box.querySelectorAll('[data-m]').forEach((el) => {
     const m = cv.items.find((x) => String(x.id) === el.dataset.m);
     onLongPress(el.querySelector('.bub'), () => msgMenu(cv, m));
+    if (m && (!m.state || m.state === 'Active')) onSwipe(el, () => setReply(cv, m));
     el.querySelector('.bub').ondblclick = () => react(cv, m, m.reaction === 'Heart' ? null : 'Heart');
   });
   const older = box.querySelector('[data-older]');
@@ -1084,7 +1167,7 @@ function drawCats() {
   if (!forum.cats) return;
   const q = forum.q.trim().toLowerCase();
   box.innerHTML = forum.cats.groups.map((g) => {
-    const cats = g.cats.filter((c) => !q || c.title.toLowerCase().includes(q) || c.desc.toLowerCase().includes(q));
+    const cats = matches(q, g.name || '') ? g.cats : g.cats.filter((c) => matches(q, c.title, c.desc, c.lastBy || '', c.lastSubject || ''));
     if (!cats.length) return '';
     return `${g.name ? `<div class="wa-group-t">${esc(g.name)}</div>` : ''}${cats.map((c) => `
       <button class="wa-row" data-cat="${esc(c.catid)}">${catAvatar(c)}
@@ -1093,7 +1176,8 @@ function drawCats() {
           <span class="wa-top"><span class="wa-sub">${c.lastBy ? `<b>${esc(c.lastBy)}:</b> ${esc(c.lastSubject)}` : esc(c.desc)}</span>
             ${c.unread ? `<span class="wa-badge">${c.unread > 999 ? '999+' : c.unread}</span>` : ''}</span>
         </span></button>`).join('')}`;
-  }).join('') || '<div class="center muted" style="padding:40px">גארנישט געפונען</div>';
+  }).join('') || `<div class="center muted" style="padding:30px 20px">קיין גרופע נישט געפונען.<br><button class="btn line" id="toSearch" style="margin-top:12px">🔎 זוך "${esc(forum.q)}" אין אלע טעמעס</button></div>`;
+  $('#toSearch') && ($('#toSearch').onclick = () => { forum.section = 'topics'; renderForum(); runSearch(); });
   const total = forum.cats.groups.reduce((n, g) => n + g.cats.length, 0);
   if (!q && total < 4) box.innerHTML += `<div class="few-groups">🌱 <b>נייע מיטגלידער זעען אין אנהייב נאר טייל גרופעס.</b><br>
     שרייב אין די גרופעס וואס דו זעסט, און מיט דער צייט עפענען זיך נאך. דערווייל קענסטו זען אלע טעמעס אין <a href="#" id="toTopics">טעמעס</a>.</div>`;
@@ -1178,6 +1262,7 @@ function parseTopics(doc) {
 
 async function loadTopics(filter, force) {
   if (filter === 'pinned') return;
+  if (filter === 'unread') filter = 'recent';
   const l = forum.lists[filter];
   if (l && !force && Date.now() - l.at < 3 * 60_000) return;
   const f = FILTERS.find((x) => x.id === filter);
@@ -1190,17 +1275,42 @@ function drawTopicsSection() {
   const chips = `<div class="wa-chips">${FILTERS.map((x) => `<button data-f="${x.id}" class="${f === x.id ? 'on' : ''}">${x.t}</button>`).join('')}</div>`;
   let rows;
   if (f === 'pinned') rows = Object.values(loadPins()).sort((a, b) => b.at - a.at);
+  else if (f === 'unread' && forum.lists.recent) rows = forum.lists.recent.rows.filter((r) => r.unread);
   else if (forum.lists[f]) rows = forum.lists[f].rows;
   else { box.innerHTML = chips + '<div class="spinner"></div>'; bindChips(); return; }
   const q = forum.q.trim().toLowerCase();
-  if (q) rows = rows.filter((r) => r.title.toLowerCase().includes(q) || (r.lastBy || '').toLowerCase().includes(q));
+  if (q) rows = rows.filter((r) => matches(q, r.title, r.lastBy || '', r.by || '', r.cat || ''));
   // pinned topics first
   const pins = loadPins();
   rows = [...rows].sort((a, b) => (pins[b.id] ? 1 : 0) - (pins[a.id] ? 1 : 0));
+  const found = q && forum.found && forum.found.q === norm(q) ? forum.found : null;
   box.innerHTML = chips + (rows.length ? topicRows(rows)
-    : `<div class="center muted" style="padding:40px">${f === 'pinned' ? 'האלט אן א טעמע (לאנג דריקן) און קלייב "פין"' : 'קיין טעמעס נישט געפונען'}</div>`);
+    : q ? '' : `<div class="center muted" style="padding:40px">${f === 'pinned' ? 'האלט אן א טעמע (לאנג דריקן) און קלייב "פין"' : f === 'unread' ? '✓ אלעס געליינט' : 'קיין טעמעס נישט געפונען'}</div>`)
+    + (q ? `<div class="wa-group-t">🔎 אינעם גאנצן פארום</div>` + (!found || found.loading ? '<div class="spinner"></div>'
+      : found.rows.length ? found.rows.map((r, i) => `
+      <button class="wa-row" data-found="${i}">${avatar('', r.by)}
+        <span class="wa-mid">
+          <span class="wa-top"><b>${esc(r.title)}</b><span class="wa-time">${esc(r.when.replace(/\s+\d.*$/, ''))}</span></span>
+          <span class="wa-top"><span class="wa-sub"><b>${esc(r.by)}:</b> ${esc(r.text)}</span></span>
+        </span></button>`).join('') : '<div class="center muted" style="padding:24px">גארנישט געפונען</div>') : '');
+  box.querySelectorAll('[data-found]').forEach((b) => (b.onclick = () => {
+    const r = found.rows[+b.dataset.found];
+    openThread({ title: r.title, cat: r.cat, catid: r.catid, id: r.id, start: null, jumpTo: r.post || null });
+  }));
   bindChips();
   bindTopicRows(box, rows);
+}
+async function runSearch() {
+  const q = forum.q;
+  if (norm(q).length < 2) return;
+  forum.found = { q: norm(q), loading: true, rows: [] };
+  if (forum.section === 'topics') drawTopicsSection();
+  try {
+    const rows = await searchForum(q);
+    if (norm(forum.q) !== norm(q)) return;
+    forum.found = { q: norm(q), rows };
+  } catch (e) { forum.found = { q: norm(q), rows: [] }; toast(errText(e)); }
+  if (state.tab === 'forum' && forum.section === 'topics') drawTopicsSection();
 }
 function bindChips() {
   document.querySelectorAll('.wa-chips button').forEach((b) => (b.onclick = () => {
@@ -1216,7 +1326,7 @@ function topicRows(rows) {
     <button class="wa-row" data-i="${i}">${avatar(r.avatar, r.lastBy || r.by || r.title)}
       <span class="wa-mid">
         <span class="wa-top"><b>${esc(r.title)}</b><span class="wa-time${r.unread ? ' new' : ''}">${esc(shortWhen(r.when || ''))}</span></span>
-        <span class="wa-top"><span class="wa-sub">${r.lastBy ? `<b>${esc(r.lastBy)}:</b> ` : ''}${esc(r.cat || '')}${r.replies ? ` · ${r.replies} ענטפערס` : r.views ? ` · ${esc(r.views)} קוקערס` : ''}</span>
+        <span class="wa-top"><span class="wa-sub">${r.lastBy ? `<b>${esc(r.lastBy)}:</b> ` : ''}${esc(r.cat || '')}${r.replies ? ` · ${r.replies} ענטפערס` : ''}${r.views ? ` · 👁 ${esc(r.views)}` : ''}</span>
           ${pins[r.id] ? '<span class="wa-ic">📌</span>' : ''}
           ${r.unread ? `<span class="wa-badge">${r.unread > 999 ? '999+' : r.unread}</span>` : ''}</span>
       </span></button>`).join('');
@@ -1351,7 +1461,7 @@ async function openThread(topic) {
   topic.unread = 0;
   const el = chatScreen({
     title: topic.title,
-    sub: esc(topic.cat || ''),
+    sub: esc([topic.cat || '', topic.views ? `👁 ${topic.views} קוקערס` : ''].filter(Boolean).join(' · ')),
     av: avatar(topic.avatar, topic.lastBy || topic.by || topic.title, 'wa-av sm'),
     menu: () => topicMenu(topic, t.actions),
   });
@@ -1359,7 +1469,7 @@ async function openThread(topic) {
   t.el = el;
   pushScreen(el, () => { if (forum.thread === t) forum.thread = null; });
   el.querySelector('.wa-send').onclick = () => sendReply(t);
-  el.querySelector('.wa-replying').remove();
+  el.querySelector('[data-unreply]').onclick = () => setPostReply(t, null);
   try {
     let start = topic.start != null ? topic.start : topic.lastUrl ? qs(topic.lastUrl).start : null;
     let page = await fetchThreadPage(topic, start);
@@ -1385,7 +1495,8 @@ function drawThread(scrollBottom) {
   if (!t) return;
   const box = t.el.querySelector('.wa-msgs');
   const me = (t.reply?.me || N.username() || '').trim().toLowerCase();
-  const posts = t.pages.flatMap((p) => p.posts);
+  const seen = new Set();
+  const posts = t.pages.flatMap((p) => p.posts).filter((p) => !seen.has(String(p.id)) && seen.add(String(p.id)));
   let html = t.lowest > 0 ? '<button class="day-chip more" data-older>↑ פריערדיגע מעלדונגען</button>' : '';
   let lastDay = '', lastAuthor = '';
   posts.forEach((p) => {
@@ -1406,6 +1517,20 @@ function drawThread(scrollBottom) {
   box.innerHTML = html || '<div class="day-chip" style="margin-top:40px">נאך קיין מעלדונגען</div>';
   bindRich(box);
   box.querySelectorAll('[data-like]').forEach((b) => (b.onclick = () => likePost(b)));
+  box.querySelectorAll('.bub blockquote').forEach((q) => {
+    q.classList.add('rq');
+    q.onclick = (e) => {
+      if (e.target.closest('a[data-href], .chip-link, img')) return;
+      e.stopPropagation();
+      quoteJump(q, posts);
+    };
+  });
+  box.querySelectorAll('.msg[data-pid]').forEach((m) => {
+    const post = posts.find((x) => String(x.id) === m.dataset.pid);
+    if (!post) return;
+    onLongPress(m.querySelector('.bub'), () => postMenu(t, post, m));
+    if (t.reply) onSwipe(m, () => setPostReply(t, post));
+  });
   box.querySelectorAll('.msg[data-author]').forEach((m) => m.querySelectorAll('.wa-av:not(.ghost), .who').forEach((x) => (x.onclick = () =>
     showProfile({ username: m.dataset.author, forumUrl: m.dataset.uid ? `${SITE}/forum/profile?func=profile&userid=${m.dataset.uid}` : null }))));
   const older = box.querySelector('[data-older]');
@@ -1445,6 +1570,83 @@ async function likePost(btn) {
   else { btn.disabled = false; toast(errText(r.status === 0 ? new Error('offline') : null)); }
 }
 
+/** Finds which post a quote came from: its "X wrote" link, else by the quoted words. */
+function quoteJump(q, posts) {
+  const linkOf = (el) => el && (el.matches?.('a[data-href]') ? el : el.querySelector?.('a[data-href]'));
+  const cands = [linkOf(q), linkOf(q.previousElementSibling), q.previousSibling?.nodeType === 1 ? linkOf(q.previousSibling) : null].filter(Boolean);
+  for (const a of cands) {
+    const href = a.getAttribute('data-href') || '';
+    const m = href.match(/#(\d+)$/) || href.match(/[?&]mesid=(\d+)/);
+    if (m) {
+      const id = qs(href).id;
+      if (!id || !forum.thread || String(forum.thread.topic.id) === String(id)) return jumpToPost(m[1]).then((ok) => ok || openLink(href));
+      return openLink(href);
+    }
+  }
+  // no link: the "X געשריבן on …" line names the author; then pick the post sharing most of the quoted words
+  const own = q.closest('.msg')?.dataset.pid;
+  let before = '';
+  for (let n = q.previousSibling; n && before.length < 200; n = n.previousSibling) before = (n.textContent || '') + before;
+  const who = norm((before.match(/([^\n:]{1,40}?)\s*(געשריבן|wrote)/) || [])[1] || '');
+  const qWords = norm(q.textContent).split(' ').filter((w) => w.length > 1).slice(0, 25);
+  const best = (list) => {
+    let top = null, score = 0;
+    list.forEach((x) => {
+      if (String(x.id) === own) return;
+      const txt = ' ' + norm(postText(x)) + ' ';
+      let sc = qWords.filter((w) => txt.includes(' ' + w + ' ') || txt.includes(w)).length / (qWords.length || 1);
+      if (who && norm(x.author) === who) sc += 0.25;
+      if (sc > score) { score = sc; top = x; }
+    });
+    return score >= 0.6 ? top : null;
+  };
+  const hit = qWords.length >= 2 && best(posts);
+  if (hit) return jumpToPost(hit.id);
+  const cur = forum.thread;
+  if (cur && cur.lowest > 0 && qWords.length >= 2) {
+    toast('זוכט די מעלדונג…');
+    jumpToPost('__none__').then(() => {
+      const h2 = best(cur.pages.flatMap((pg) => pg.posts));
+      if (h2) jumpToPost(h2.id); else toast('די מעלדונג איז נישט געפונען');
+    });
+  } else toast('די מעלדונג איז נישט געפונען');
+}
+
+/** Plain text of a post (for quotes / copy). */
+function postText(post) {
+  const d = document.createElement('div');
+  d.innerHTML = post.html.replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n');
+  d.querySelectorAll('blockquote').forEach((q) => q.remove());
+  return d.textContent.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function postMenu(t, post, row) {
+  openModal(`
+    <h2 style="font-size:16px">${esc(post.author)}</h2>
+    <div class="list" style="margin:8px 0 0">
+      ${t.reply ? `<button class="item" data-x="reply"><span class="ic">↩️</span><span class="grow t">ריפליי (מיט ציטאט)</span></button>` : ''}
+      ${post.like ? `<button class="item" data-x="like"><span class="ic">👍</span><span class="grow t">א דאנק</span></button>` : ''}
+      <button class="item" data-x="copy"><span class="ic">📋</span><span class="grow t">קאפי</span></button>
+      <button class="item" data-x="prof"><span class="ic">👤</span><span class="grow t">זע פראפייל</span></button>
+    </div>`);
+  const on = (k, fn) => { const b = $(`#modal [data-x=${k}]`); if (b) b.onclick = () => { closeModal(); fn(); }; };
+  on('reply', () => setPostReply(t, post));
+  on('like', () => { const b = row.querySelector('[data-like]'); if (b) likePost(b); });
+  on('copy', () => { try { navigator.clipboard.writeText(postText(post)); toast('קאפיד'); } catch { toast('קען נישט קאפיען'); } });
+  on('prof', () => showProfile({ username: post.author, forumUrl: post.uid ? `${SITE}/forum/profile?func=profile&userid=${post.uid}` : null }));
+}
+
+function setPostReply(t, post) {
+  t.replyTo = post;
+  const bar = t.el.querySelector('.wa-replying');
+  bar.classList.toggle('hidden', !post);
+  if (post) {
+    bar.querySelector('b').textContent = post.author;
+    bar.querySelector('.s').textContent = postText(post).slice(0, 120);
+    t.el.querySelector('textarea').focus();
+  }
+}
+
 async function sendReply(t) {
   const ta = t.el.querySelector('textarea');
   const msg = ta.value.trim();
@@ -1463,15 +1665,16 @@ async function sendReply(t) {
   ta.oninput();
   const fields = {
     action: 'post',
-    parentid: last?.id || t.topic.id,
+    parentid: (t.replyTo && t.replyTo.id) || last?.id || t.topic.id,
     catid: t.reply.catid || t.topic.catid,
     subject: t.reply.subject || 'ענטפער: ' + t.title,
-    message: toBBCode(msg),
+    message: (t.replyTo ? `[quote="${t.replyTo.author}" post=${t.replyTo.id}]${postText(t.replyTo).slice(0, 600)}[/quote]\n` : '') + toBBCode(msg),
     authorname: t.reply.me,
   };
   if (t.reply.token) fields[t.reply.token] = '1';
   const r = await httpForm(SITE + '/forum?func=post', fields);
   t.sending = false;
+  if (r.ok) setPostReply(t, null);
   t.el.querySelector('.wa-send')?.classList.remove('busy');
   if (!r.ok) {
     tmp.remove();

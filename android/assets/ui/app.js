@@ -757,8 +757,8 @@ function renderMore() {
 
     <div class="section-title">הילף</div>
     <div class="list">
-      <a class="item" href="tel:+17185676100"><span class="ic">${icon('phone')}</span><span class="grow"><span class="t">האטליין</span><div class="s ltr">(718) 567-6100</div></span></a>
-      <a class="item" href="mailto:gye.yid@hitdanoigen.com"><span class="ic">${icon('mail')}</span><span class="grow"><span class="t">אימעיל</span><div class="s ltr">gye.yid@hitdanoigen.com</div></span></a>
+      <a class="item" href="tel:+17185676100"><span class="ic">${icon('phone')}</span><span class="grow"><span class="t">האטליין</span><div class="s"><span class="ltr">(718) 567-6100</span></div></span></a>
+      <a class="item" href="mailto:gye.yid@hitdanoigen.com"><span class="ic">${icon('mail')}</span><span class="grow"><span class="t">אימעיל</span><div class="s"><span class="ltr">gye.yid@hitdanoigen.com</span></div></span></a>
     </div>
 
     <div class="section-title">אפ</div>

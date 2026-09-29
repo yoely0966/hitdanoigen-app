@@ -6,7 +6,8 @@ set -euo pipefail
 
 # version comes from android/version.properties (release.sh bumps it); env vars override
 _VP="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/version.properties"
-_vp() { [ -f "$_VP" ] && grep "^$1=" "$_VP" | cut -d= -f2 | tr -d ''; }
+_vp() { [ -f "$_VP" ] && grep "^$1=" "$_VP" | cut -d= -f2 | tr -d '
+'; }
 VERSION_NAME="${VERSION_NAME:-$(_vp VERSION_NAME)}"; VERSION_NAME="${VERSION_NAME:-1.0.0}"
 VERSION_CODE="${VERSION_CODE:-$(_vp VERSION_CODE)}"; VERSION_CODE="${VERSION_CODE:-1}"
 
@@ -71,7 +72,7 @@ echo "== aapt2 compile/link"
 "$AAPT2" compile --dir "$(w "$HERE/res")" -o "$(w "$OUT/compiled/res.zip")"
 "$AAPT2" link -o "$(w "$OUT/base.apk")" -I "$(w "$ANDROID_JAR")" \
   --manifest "$(w "$HERE/AndroidManifest.xml")" --java "$(w "$OUT/gen")" \
-  --min-sdk-version 24 --target-sdk-version 35 --version-code 7 --version-name 1.7.0 \
+  --min-sdk-version 24 --target-sdk-version 35 --version-code "$VERSION_CODE" --version-name "$VERSION_NAME" \
   --auto-add-overlay "$(w "$OUT/compiled/res.zip")"
 
 # 4. Java -> classes -> dex

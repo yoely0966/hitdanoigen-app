@@ -32,6 +32,7 @@ bash android/build.sh
 APK="dist/HitDaneOigen.apk"
 
 git add -A
+git reset -q -- notes.txt .release-notes.tmp 2>/dev/null || true
 git commit -m "Release v$new_name" -m "$notes" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" >/dev/null
 git tag -a "v$new_name" -m "v$new_name"
 git push origin HEAD --tags
@@ -42,9 +43,11 @@ TOKEN="$(printf 'protocol=https\nhost=github.com\nusername=yoely0966\n\n' | git 
 api() { curl -fsS -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" "$@"; }
 
 # notes go through a UTF-8 file: Windows mangles Yiddish passed as a command-line argument
-NOTES_FILE="$(mktemp)"; printf '%s' "$notes" > "$NOTES_FILE"
-body="$(node -e 'const fs=require("fs");process.stdout.write(JSON.stringify({tag_name:process.argv[1],name:process.argv[1],body:fs.readFileSync(process.argv[2],"utf8"),draft:false,prerelease:false}))' "v$new_name" "$NOTES_FILE")"
+NOTES_FILE="$HERE/.release-notes.tmp"; printf '%s' "$notes" > "$NOTES_FILE"
+command -v cygpath >/dev/null 2>&1 && NOTES_FILE_W="$(cygpath -w "$NOTES_FILE")" || NOTES_FILE_W="$NOTES_FILE"
+body="$(node -e 'const fs=require("fs");process.stdout.write(JSON.stringify({tag_name:process.argv[1],name:process.argv[1],body:fs.readFileSync(process.argv[2],"utf8"),draft:false,prerelease:false}))' "v$new_name" "$NOTES_FILE_W")"
 rm -f "$NOTES_FILE"
+[ -n "$body" ] || { echo "could not prepare the release text" >&2; exit 1; }
 rel="$(api -X POST "https://api.github.com/repos/$REPO/releases" -d "$body")"
 upload="$(printf '%s' "$rel" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).upload_url.replace(/\{.*$/,"")))')"
 api -X POST -H "Content-Type: application/vnd.android.package-archive" \

@@ -10,3 +10,7 @@ android/keystore.properties
 
 # local notes
 yiddish-words.csv
+
+# release notes scratch
+notes.txt
+.release-notes.tmp

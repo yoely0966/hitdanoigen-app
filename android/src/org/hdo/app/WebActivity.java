@@ -31,6 +31,7 @@ public class WebActivity extends Activity {
     private TextView title;
     private ProgressBar bar;
     private ValueCallback<Uri[]> pickCb;
+    private boolean ranJs;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -99,6 +100,8 @@ public class WebActivity extends Activity {
             @Override public void onPageFinished(WebView v, String url) {
                 CookieManager.getInstance().flush();
                 if (getIntent().getBooleanExtra("capture", false)) capture(v, url);
+                String extra = getIntent().getStringExtra("js");
+                if (extra != null && !ranJs) { ranJs = true; v.evaluateJavascript(extra, null); }
                 if (getIntent().getStringExtra("title") == null) title.setText(v.getTitle());
             }
         });

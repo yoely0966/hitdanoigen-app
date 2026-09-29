@@ -240,3 +240,10 @@ body.wa #view { padding: 0 0 calc(96px + env(safe-area-inset-bottom)); }
 .ed-foot { display: flex; align-items: center; gap: 12px; padding: 10px 12px calc(12px + env(safe-area-inset-bottom)); }
 .ed-foot .muted { flex: 1; }
 .ed-foot .btn { width: auto; padding: 0 26px; min-height: 48px; border-radius: 24px; }
+
+.ai-points { text-align: right; display: grid; gap: 12px; margin: 10px 4px 16px; }
+.ai-points div { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; }
+.ai-points div span:first-child { font-size: 18px; flex: none; }
+.ai-how { text-align: right; background: var(--wa-in); border-radius: 16px; padding: 12px 14px; margin: 0 0 16px; font-size: 13.5px; box-shadow: 0 1px .5px rgba(11,20,26,.13); }
+.ai-how b { font-size: 15px; }
+.ai-how p { margin: 6px 0 0; color: var(--wa-meta); text-align: right; }

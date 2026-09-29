@@ -308,6 +308,7 @@ function renderHome() {
 
   view().innerHTML = `
     ${state.update?.available ? `<button class="banner" id="updBanner" style="width:100%">${icon('download')} <span class="grow">א נייע ווערזשן (${esc(state.update.latest)}) איז גרייט</span>${icon('chev')}</button>` : ''}
+    <button class="staff-home hidden" id="staffHome"><span class="sp-av">ש</span><span class="grow"><b></b><span>דריק צו לייענען</span></span>${icon('chev')}</button>
     <header class="home-top">
       <div class="grow">
         <div class="ht-hello">${greeting()},</div>
@@ -376,6 +377,8 @@ function renderHome() {
 
   $('#bClean').onclick = () => checkInClean();
   $('#meBadge').onclick = () => profileMenu();
+  $('#staffHome').onclick = () => N.openStaff();
+  paintStaff();
   $('#bFall').onclick = () => setbackSheet();
   $('#bWall') && ($('#bWall').onclick = () => { state.chart.seg = 'woh'; go('chart'); });
   $('#bWidget') && ($('#bWidget').onclick = () => N.pinWidget());
@@ -551,6 +554,39 @@ function profileMenu() {
   }));
 }
 
+/* ---------------- messages from the staff (the site's messenger) ---------------- */
+state.staffUnread = 0;
+window.onStaffUnread = (n) => {
+  const before = state.staffUnread;
+  state.staffUnread = n;
+  paintStaff();
+  if (n > before && n > 0) staffPopup(n);
+};
+function paintStaff() {
+  const n = state.staffUnread;
+  const pill = document.querySelector('#nav button[data-t="more"] .pill');
+  if (pill) {
+    let s = pill.querySelector('.nav-badge');
+    if (!n) s?.remove();
+    else { if (!s) { s = document.createElement('span'); s.className = 'nav-badge'; pill.appendChild(s); } s.textContent = n > 99 ? '99+' : n; }
+  }
+  const row = $('#staffCount');
+  if (row) row.innerHTML = n ? `<span class="wa-badge">${n}</span>` : '';
+  const home = $('#staffHome');
+  if (home) home.classList.toggle('hidden', !n), n && (home.querySelector('b').textContent = n === 1 ? '1 נייע מעסעדזש פון שטאב' : `${n} נייע מעסעדזשעס פון שטאב`);
+}
+/** Like the site: a small card pops up at the bottom when the staff writes. */
+function staffPopup(n) {
+  $('#staffPop')?.remove();
+  const p = document.createElement('button');
+  p.id = 'staffPop';
+  p.className = 'staff-pop';
+  p.innerHTML = `<span class="sp-av">ש</span><span class="grow"><b>${n === 1 ? 'א נייע מעסעדזש פון שטאב' : n + ' נייע מעסעדזשעס פון שטאב'}</b><span>דריק צו לייענען און ענטפערן</span></span><span class="sp-x" data-x>✕</span>`;
+  p.onclick = (e) => { p.remove(); if (!e.target.closest('[data-x]')) N.openStaff(); };
+  document.body.appendChild(p);
+  setTimeout(() => p.remove(), 12000);
+}
+
 /* ---------------- modal ---------------- */
 function openModal(html) {
   closeModal();
@@ -661,21 +697,55 @@ function drawChartList() {
   if (me && !q) {
     html += `<div class="section-title">דיין שורה</div><div class="list me-card">${personRow(me)}
       ${me.began ? `<div class="item small muted" style="display:block">${esc(me.began)}</div>` : ''}
-      <button class="item" id="mEdit"><span class="ic">${icon('gear')}</span><span class="grow"><span class="t">מיינע טשארט סעטינגס</span><div class="s">פארום-לינק, פובליק/פריוואט, ריסעט</div></span>${icon('chev')}</button></div>`;
+      <div class="row-opts">
+        <button data-o="link">🔗 ${me.myForumLink ? 'טויש פארום-לינק' : 'לייג צו דיין פארום-לינק'}</button>
+        <button data-o="streak">${me.streakOnForum ? '🔥 שטרעקע אויפ\'ן פארום: אן' : '🚫 שטרעקע אויפ\'ן פארום: אויס'}</button>
+        <button data-o="public">${me.isPublic !== false ? '👁️ פובליק' : '🔒 פריוואט'}</button>
+        <button data-o="reset" class="danger">🔄 ריסעט</button>
+      </div></div>`;
   }
   const others = rows.filter((p) => !p.me || q);
   html += `<div class="section-title">${c.seg === 'woh' ? 'וואנט פון כבוד' : '90-טעג טשארט'} · ${others.length}</div>`;
   html += others.length ? `<div class="list">${others.slice(0, 400).map(personRow).join('')}</div>` : '<div class="card center muted">קיינער נישט געפונען</div>';
   box.innerHTML = html;
-  $('#mEdit') && ($('#mEdit').onclick = () => chartSettings(me));
+  // the same options the site shows on your row, one tap each
+  box.querySelectorAll('.row-opts [data-o]').forEach((b) => (b.onclick = async () => {
+    const o = b.dataset.o;
+    if (o === 'link') return forumLinkSheet(me);
+    if (o === 'reset') return resetChart();
+    b.disabled = true;
+    try {
+      if (o === 'streak') {
+        await chartCall('POST', '/90days/profile?view=profile&task=editForumCurrentStreak&TOKEN=1&user=', 'do_not_display_current_streak=' + (me.streakOnForum ? 1 : 0));
+        me.streakOnForum = !me.streakOnForum;
+        toast(me.streakOnForum ? 'דיין שטרעקע ווייזט זיך אויפ\'ן פארום' : 'דיין שטרעקע ווייזט זיך נישט אויפ\'ן פארום');
+      } else {
+        await chartCall('GET', `/90days/profile?view=profile&task=editInformationHide&TOKEN=1&user=&hide=${me.isPublic !== false ? 1 : 0}`);
+        me.isPublic = me.isPublic === false;
+        toast(me.isPublic ? 'פובליק – אנדערע זעען דיין אינפארמאציע' : 'פריוואט – דיין אינפארמאציע איז באהאלטן');
+      }
+      drawChartList();
+    } catch (e) { toast(errText(e)); b.disabled = false; }
+  }));
+  // tap your medal to see it big (like "דריק צו פארגרעסערן בילד")
+  const medal = box.querySelector('.me-card .person img');
+  if (medal) medal.onclick = () => {
+    const small = medal.getAttribute('src');
+    openModal(`<div class="center"><img class="big-medal" src="${esc(small.replace('/small/', '/large/'))}" onerror="this.onerror=null;this.src='${esc(small)}'"
+      alt=""><h2 style="margin-top:12px">${esc(me.level)}: ${esc(me.levelName)}</h2><p>${esc(me.current)}</p></div>`);
+  };
 }
 
 /* ---------------- my chart settings (native, no website) ---------------- */
 async function chartToken() {
   const html = (await http('GET', SITE + '/90days/profile?tmpl=component&view=profile&layout=add_edit_forum_link')).body || '';
   const m = html.match(/([a-f0-9]{32})=1/);
-  if (!m) throw new Error('token');
-  return m[1];
+  if (m) return m[1];
+  // some accounts get a plain page here - every site page carries window.token
+  const page = (await http('GET', SITE + '/90days')).body || '';
+  const t = page.match(/window\.token\s*=\s*'([a-f0-9]{32})'/);
+  if (!t) throw new Error('token');
+  return t[1];
 }
 async function chartCall(method, path, body) {
   const tok = await chartToken();
@@ -716,7 +786,11 @@ function chartSettings(me) {
   toggle($('#csPublic'), (on) => chartCall('GET', `/90days/profile?view=profile&task=editInformationHide&TOKEN=1&user=&hide=${on ? 0 : 1}`));
   toggle($('#csStreak'), (on) => chartCall('POST', '/90days/profile?view=profile&task=editForumCurrentStreak&TOKEN=1&user=', 'do_not_display_current_streak=' + (on ? 0 : 1)));
   $('#csLink').onclick = () => forumLinkSheet(me);
-  $('#csReset').onclick = () => openModal(`
+  $('#csReset').onclick = () => resetChart();
+}
+
+function resetChart() {
+  openModal(`
     <h2>ריסעט דעם טשארט?</h2>
     <p>דאס מעקט אויס דיין שטרעקע און רעקארד אויפ'ן 90-טעג טשארט און וואנט פון כבוד, און מען הייבט אן פון דאס נייע. מען קען דאס נישט צוריקמאכן.</p>
     <div class="btns"><button class="btn red" id="csResetYes">יא, ריסעט</button><button class="btn line" data-close>ניין, צוריק</button></div>`)
@@ -829,6 +903,19 @@ function renderJournal(inChart) {
 }
 
 /* ---------------- more / settings ---------------- */
+/** The site's "מער" menu. */
+const SECTIONS = [
+  { t: 'מאטיוואציע', e: '🏆', c: '#f59e0b', u: APP + '/motivation' },
+  { t: 'פלאנירונג', e: '📝', c: '#3b82f6', u: APP + '/planning' },
+  { t: 'קאנעקשן', e: '💬', c: '#10b981', u: APP + '/connection' },
+  { t: 'מיני-קורסן', e: '🎓', c: '#14b8a6', u: APP + '/mini-courses' },
+  { t: 'ווידעאס', e: '🎬', c: '#6366f1', u: APP + '/videos' },
+  { t: 'טולבאקס', e: '🧰', c: '#8b5cf6', u: APP + '/toolbox' },
+  { t: 'פארום', e: '👥', c: '#f97316', go: () => go('forum') },
+  { t: '90 טעג טשארט', e: '📊', c: '#a855f7', go: () => { state.chart.seg = 'c90'; go('chart'); } },
+  { t: 'האנטבוך', e: '📖', c: '#ec4899', go: () => N.openHandbook() },
+];
+
 const LINKS = [
   { t: 'האנטבוך', s: 'לייען מיט בוקמארקס', i: 'book', u: 'handbook' },
   { t: 'פארום', s: 'רעדן מיט אנדערע, אנאנים', i: 'forum', u: SITE + '/forum' },
@@ -878,11 +965,17 @@ function renderMore() {
         : '<div class="note">האלט אן א ליידיגן פלאץ אויפ\'ן האום-סקרין ← ווידזשעטס ← היט דיינע אויגן.</div>'}
     </section>
 
+    <div class="section-title">פראגראם</div>
+    <div class="tiles">
+      ${SECTIONS.map((x, i) => `<button class="tile" data-sec="${i}" style="--tc:${x.c}"><span class="ti">${x.e}</span><b>${x.t}</b></button>`).join('')}
+    </div>
+
     <div class="section-title">וועבזייטל</div>
     <div class="list">${LINKS.map((l, i) => `<button class="item" data-l="${i}"><span class="ic">${icon(l.i)}</span><span class="grow"><span class="t">${l.t}</span>${l.s ? `<div class="s">${l.s}</div>` : ''}</span>${icon('chev')}</button>`).join('')}</div>
 
     <div class="section-title">הילף</div>
     <div class="list">
+      <button class="item" id="bStaff"><span class="ic">${icon('chat')}</span><span class="grow"><span class="t">מעסעדזשעס פון שטאב</span><div class="s">פריוואטע מעסעדזשעס מיט די שטאב פון היט דיינע אויגן</div></span><span id="staffCount"></span></button>
       <a class="item" href="tel:+17185676100"><span class="ic">${icon('phone')}</span><span class="grow"><span class="t">האטליין</span><div class="s"><span class="ltr">(718) 567-6100</span></div></span></a>
       <a class="item" href="mailto:gye.yid@hitdanoigen.com"><span class="ic">${icon('mail')}</span><span class="grow"><span class="t">אימעיל</span><div class="s"><span class="ltr">gye.yid@hitdanoigen.com</span></div></span></a>
     </div>
@@ -917,6 +1010,13 @@ function renderMore() {
   $('#wPin') && ($('#wPin').onclick = () => N.pinWidget());
   document.querySelectorAll('[data-l]').forEach((b) => (b.onclick = () => { const l = LINKS[+b.dataset.l]; if (l.u === 'handbook') N.openHandbook(); else N.openWeb(l.u, l.t); }));
   $('#uCheck').onclick = () => updateSheet(true);
+  document.querySelectorAll('[data-sec]').forEach((b) => (b.onclick = () => {
+    const x = SECTIONS[+b.dataset.sec];
+    if (x.go) return x.go();
+    N.openWeb(x.u, x.t);
+  }));
+  $('#bStaff').onclick = () => N.openStaff();
+  paintStaff();
   $('#bOut').onclick = () => {
     openModal(`
     <h2>לאג ארויס?</h2><p>דו וועסט דארפן אריינשרייבן דיין פאסווארט נאכאמאל. רימיינדערס ווערן אפגעשטעלט.</p>

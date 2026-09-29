@@ -42,6 +42,9 @@ public class MainActivity extends Activity {
     /** false after the user cancelled the prompt: wait for the unlock button instead of re-asking */
     private boolean autoPrompt = true;
     private String pendingAction;
+    /** hidden copy of the website; its messenger (Intercom) tells us about new messages from the staff */
+    private WebView staffWeb;
+    static final String OPEN_MESSENGER = "(function s(n){if(window.Intercom){Intercom('show')}else if(n<40){setTimeout(function(){s(n+1)},500)}})(0)";
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
@@ -86,6 +89,7 @@ public class MainActivity extends Activity {
         pendingAction = getIntent().getStringExtra("action");
         web.loadUrl(UI);
         Reminders.schedule(this);
+        startStaffWatch();
     }
 
     @Override
@@ -219,8 +223,34 @@ public class MainActivity extends Activity {
         });
     }
 
+    /**
+     * Loads the website invisibly (already logged in through the shared storage) and asks its
+     * messenger for the unread count; the page shows a popup + badge like the site does.
+     */
+    @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
+    void startStaffWatch() {
+        if (staffWeb != null || !Store.loggedIn(this)) return;
+        staffWeb = new WebView(this);
+        staffWeb.getSettings().setJavaScriptEnabled(true);
+        staffWeb.getSettings().setDomStorageEnabled(true);
+        staffWeb.getSettings().setBlockNetworkImage(true);
+        staffWeb.addJavascriptInterface(new Object() {
+            @JavascriptInterface public void unread(int n) {
+                js("window.onStaffUnread&&window.onStaffUnread(" + n + ")");
+            }
+        }, "StaffBridge");
+        staffWeb.setWebViewClient(new WebViewClient() {
+            @Override public void onPageFinished(WebView v, String url) {
+                v.evaluateJavascript("(function w(n){if(window.Intercom){Intercom('onUnreadCountChange',function(c){StaffBridge.unread(c)})}"
+                        + "else if(n<60){setTimeout(function(){w(n+1)},1000)}})(0)", null);
+            }
+        });
+        staffWeb.loadUrl(Auth.APP + "/");
+    }
+
     @Override
     protected void onDestroy() {
+        if (staffWeb != null) { staffWeb.destroy(); staffWeb = null; }
         pool.shutdownNow();
         web.destroy();
         super.onDestroy();
@@ -258,6 +288,7 @@ public class MainActivity extends Activity {
                 if (ok) {
                     Reminders.schedule(MainActivity.this);
                     ChartWidget.refreshAsync(MainActivity.this);
+                    startStaffWatch();
                 }
                 js("window.onLogin(" + ok + "," + JSONObject.quote(err == null ? "" : err) + ")");
             }));
@@ -328,6 +359,12 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void signup() {
             runOnUiThread(() -> startActivity(new Intent(MainActivity.this, WebActivity.class)
                     .putExtra("url", Auth.APP + "/signup").putExtra("title", "נייע אקאונט").putExtra("capture", true)));
+        }
+
+        /** The staff messages (the site's messenger), opened full screen inside the app. */
+        @JavascriptInterface public void openStaff() {
+            runOnUiThread(() -> startActivity(new Intent(MainActivity.this, WebActivity.class)
+                    .putExtra("url", Auth.APP + "/").putExtra("title", "מעסעדזשעס פון שטאב").putExtra("js", OPEN_MESSENGER)));
         }
 
         @JavascriptInterface public void openHandbook() {

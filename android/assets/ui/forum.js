@@ -302,8 +302,20 @@ async function loadConvs(force) {
 
 /* ---------- AI helpers: the site's chat bots ---------- */
 const BOT_INFO = {
-  Motivation: { icon: '🤖', desc: 'חיזוק און מאטיוואציע ווען דו דארפסט עס', starters: ['גיב מיר חיזוק', 'איך האב א שווערן טאג', 'איך האב א שטארקן גלוסט יעצט', 'פארוואס איז עס ווערט צו קעמפן?'] },
-  Planning: { icon: '🗺️', desc: 'מאך א פלאן, ציל און שריט פאר שריט', starters: ['העלף מיר מאכן א פלאן', 'וואס קען איך טון היינט?', 'ווי אזוי פארמייד איך שווערע מאמענטן?', 'איך וויל שטעלן א ציל'] },
+  Motivation: { icon: '🤖', desc: 'חיזוק און מאטיוואציע ווען דו דארפסט עס',
+    points: [
+      ['🪄', 'ניצט פשוט\'ע מאטיוואציע-מיטלען צו שאפן קלארקייט און א דרייוו פאר יעדן טאג'],
+      ['🎯', 'העלפט דיר טרעפן דיינע פערזענליכע סיבות פארן טויש, און א קלארע ריכטונג'],
+      ['🤲', 'גיט חיזוק ווען עס איז שווער, און העלפט דיר נישט אויפגעבן'],
+      ['👁️', 'בויט א קלארע וויזיע פאר דיין טויש, מיט פשוט\'ע צילן פאר יעדן טאג'],
+    ], starters: ['גיב מיר חיזוק', 'איך האב א שווערן טאג', 'איך האב א שטארקן גלוסט יעצט', 'פארוואס איז עס ווערט צו קעמפן?'] },
+  Planning: { icon: '🗺️', desc: 'מאך א פלאן, ציל און שריט פאר שריט',
+    points: [
+      ['🗺️', 'מאכט מיט דיר א פלאן, שריט נאך שריט, וואס פאסט פאר דיין לעבן'],
+      ['⚠️', 'העלפט דיר זען שווערע מאמענטן פון פאראויס און זיך צוגרייטן'],
+      ['🧱', 'שטעלט גרעניצן און גוטע געוואוינהייטן וואס שיצן דיך'],
+      ['✅', 'ברעכט גרויסע צילן צו קליינע שריט וואס מען קען טון היינט'],
+    ], starters: ['העלף מיר מאכן א פלאן', 'וואס קען איך טון היינט?', 'ווי אזוי פארמייד איך שווערע מאמענטן?', 'איך וויל שטעלן א ציל'] },
 };
 async function loadBots() {
   if (forum.bots) return forum.bots;
@@ -738,7 +750,11 @@ function drawChat(cv, scrollBottom) {
   if (cv.waiting) html += '<div class="msg in"><div class="bub typing"><i></i><i></i><i></i></div></div>';
   const info = cv.bot ? BOT_INFO[cv.bot.botType] : null;
   if (info && !cv.items.length) {
-    html = `<div class="ai-hello"><div class="ai-big">${info.icon}</div><b>${esc(cv.bot.username)}</b><p>${esc(info.desc)}</p>
+    html = `<div class="ai-hello"><div class="ai-big">${info.icon}</div><b>${esc(cv.bot.username)} <span class="ai-tag">AI</span></b><p>${esc(info.desc)}</p>
+      ${info.points ? `<div class="ai-points">${info.points.map(([e, t]) => `<div><span>${e}</span><span>${esc(t)}</span></div>`).join('')}</div>` : ''}
+      <div class="ai-how"><b>ווי אזוי ארבעט דאס?</b>
+        <p>דער AI געהילף רעדט מיט דיר ווי א פריינט: שרייב וואס דו טראכסט אדער דרוק איינע פון די פראגעס אונטן, און ער ענטפערט גלייך.</p>
+        <p>באמערקונג: די "באטס" זענען נישט קיין מענטשן. זיי קענען אמאל מאכן א טעות – ביי א דרינגענדע זאך רוף דעם האטליין.</p></div>
       <div class="ai-starters">${info.starters.map((t) => `<button data-start="${esc(t)}">${esc(t)}</button>`).join('')}</div></div>`;
   } else if (info) {
     html += `<div class="ai-starters inline">${info.starters.slice(0, 3).map((t) => `<button data-start="${esc(t)}">${esc(t)}</button>`).join('')}</div>`;

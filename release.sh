@@ -3,7 +3,8 @@
 # and creates a GitHub Release with the APK attached. The app's "check for updates"
 # reads the newest release of this repo and offers to install it.
 #
-# Usage (Git Bash):  bash release.sh 1.4.1 "What changed (shown in the app)"
+# Usage (Git Bash):  bash release.sh 1.7.3 notes.txt      (notes in a UTF-8 file - best for Yiddish)
+#                    bash release.sh 1.7.3 "What changed (shown in the app)"
 #                    bash release.sh            -> bumps the last number (1.4.0 -> 1.4.1)
 set -euo pipefail
 
@@ -19,6 +20,8 @@ if [ -z "$new_name" ]; then
   IFS=. read -r a b c <<<"$cur_name"; new_name="$a.$b.$((c + 1))"
 fi
 notes="${2:-ווערזשן $new_name}"
+# a notes *file* is safest for Yiddish (Windows command lines can turn it into ????)
+if [ -n "${2:-}" ] && [ -f "$2" ]; then notes="$(cat "$2")"; fi
 new_code=$((cur_code + 1))
 
 git diff --quiet HEAD -- 2>/dev/null || echo "note: uncommitted changes will be included in this release"

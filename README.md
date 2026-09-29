@@ -1,5 +1,11 @@
 # היט דיינע אויגן – Android app
 
+### [⬇️ Download the app (newest version)](https://github.com/yoely0966/hitdanoigen-app/releases/latest/download/HitDaneOigen.apk)
+
+Open the downloaded file on your Android phone and allow "install unknown apps" once. After that the app updates itself: **מער → טשעק פאר אפדעיטס**.
+
+---
+
 An unofficial, personal Android client for [hitdanoigen.com](https://hitdanoigen.com).
 It runs entirely on the phone and talks straight to the website – there is no server of its own.
 

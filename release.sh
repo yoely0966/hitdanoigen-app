@@ -49,5 +49,7 @@ rel="$(api -X POST "https://api.github.com/repos/$REPO/releases" -d "$body")"
 upload="$(printf '%s' "$rel" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).upload_url.replace(/\{.*$/,"")))')"
 api -X POST -H "Content-Type: application/vnd.android.package-archive" \
   --data-binary @"$APK" "$upload?name=HitDaneOigen-$new_name.apk" >/dev/null
+# same file under a fixed name -> permanent link .../releases/latest/download/HitDaneOigen.apk
+api -X POST -H "Content-Type: application/vnd.android.package-archive"   --data-binary @"$APK" "$upload?name=HitDaneOigen.apk" >/dev/null
 unset TOKEN
 echo "OK -> https://github.com/$REPO/releases/tag/v$new_name"

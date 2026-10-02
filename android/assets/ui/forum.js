@@ -571,6 +571,19 @@ async function showProfile(who) {
 }
 
 /** The live chat: its own screen, opened from the round button above "new topic". */
+/** From a notification: the live chat list, then that conversation. */
+async function openChatById(id) {
+  while (stack.length) popScreen();
+  go('forum');
+  openLiveChats();
+  try {
+    await loadConvs(true);
+    drawConvs();
+    const c = forum.convs.rows.find((x) => String(x.id) === String(id));
+    if (c) openConv(c);
+  } catch (e) { toast(errText(e)); }
+}
+
 function openLiveChats() {
   const el = document.createElement('div');
   el.className = 'wa-screen list-screen';
@@ -706,6 +719,7 @@ function chatScreen({ title, sub, av, menu, placeholder }) {
   el.querySelector('[data-back]').onclick = () => popScreen();
   if (menu) el.querySelector('[data-menu]').onclick = menu;
   const ta = el.querySelector('textarea');
+  listKeys(ta);
   ta.oninput = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 150) + 'px'; el.querySelector('.wa-send').classList.toggle('ready', !!ta.value.trim()); };
   const bar = el.querySelector('.fmt-bar');
   el.querySelector('.wa-pop').onclick = (e) => { e.preventDefault(); popEditor(el); };
@@ -751,6 +765,7 @@ function popEditor(chatEl) {
   const ta = pop.querySelector('.ed-text');
   const count = pop.querySelector('[data-count]');
   ta.value = small.value;
+  listKeys(ta);
   const upd = () => { count.textContent = ta.value.trim() ? `${ta.value.trim().length} אותיות` : ''; };
   ta.oninput = upd;
   upd();
@@ -793,18 +808,71 @@ function wrapSel(ta, mark) {
   ta.focus();
   ta.oninput();
 }
-/** Puts "> ", "• " or "1. " in front of every selected line (or the current line). */
+const LIST_RE = { '1. ': /^\s*\d+[.)]\s+/, '• ': /^\s*[-•]\s+/, '> ': /^>\s?/ };
+/** Puts "> ", "• " or "1. " in front of every selected line (or the current line); again = takes it off. Numbers count only filled lines. */
 function prefixLines(ta, pre) {
   const v = ta.value;
   const a = v.lastIndexOf('\n', ta.selectionStart - 1) + 1;
   let b = v.indexOf('\n', ta.selectionEnd);
   if (b < 0) b = v.length;
+  const rows = v.slice(a, b).split('\n');
+  const strip = (l) => l.replace(LIST_RE['1. '], '').replace(LIST_RE['• '], '').replace(LIST_RE['> '], '');
+  const filled = rows.filter((l) => l.trim());
+  const already = filled.length && filled.every((l) => LIST_RE[pre].test(l));
   let n = 0;
-  const block = v.slice(a, b).split('\n').map((l) => (pre === '1. ' ? `${++n}. ` : pre) + l).join('\n');
+  const block = (filled.length ? rows : ['']).map((l) => {
+    if (already) return strip(l);
+    if (!l.trim() && filled.length) return l;
+    return (pre === '1. ' ? `${++n}. ` : pre) + strip(l);
+  }).join('\n');
   ta.value = v.slice(0, a) + block + v.slice(b);
   ta.setSelectionRange(a + block.length, a + block.length);
   ta.focus();
-  ta.oninput();
+  ta.oninput && ta.oninput();
+}
+
+/** Enter inside a list continues it ("3. " -> "4. ", "• ", "> "); Enter on an empty item ends the list. */
+function listKeys(ta) {
+  let prev = ta.value;
+  ta.addEventListener('input', () => {
+    const v = ta.value, pos = ta.selectionStart;
+    const grewByNewline = v.length === prev.length + 1 && v[pos - 1] === '\n' && v.slice(0, pos - 1) + v.slice(pos) === prev;
+    prev = v;
+    if (!grewByNewline) return;
+    const lineStart = v.lastIndexOf('\n', pos - 2) + 1;
+    const line = v.slice(lineStart, pos - 1);
+    let m, next = null;
+    if ((m = line.match(/^(\s*)(\d+)([.)])\s+/))) next = m[0].trim() === line.trim() ? '' : `${m[1]}${+m[2] + 1}${m[3]} `;
+    else if ((m = line.match(/^(\s*[-•])\s+/))) next = m[0].trim() === line.trim() ? '' : m[1] + ' ';
+    else if ((m = line.match(/^>\s?/))) next = line.replace(/^>\s?/, '').trim() ? '> ' : '';
+    if (next === null) return;
+    if (next === '') {
+      // empty item: drop the marker and the new line -> list ended
+      ta.value = v.slice(0, lineStart) + v.slice(pos);
+      ta.setSelectionRange(lineStart, lineStart);
+    } else {
+      ta.value = v.slice(0, pos) + next + v.slice(pos);
+      ta.setSelectionRange(pos + next.length, pos + next.length);
+      // renumber the rest of this numbered list so it stays 1, 2, 3…
+      if (/^\d/.test(next.trim())) renumber(ta, pos);
+    }
+    prev = ta.value;
+    ta.oninput && ta.oninput();
+  });
+}
+function renumber(ta, from) {
+  const v = ta.value, keep = ta.selectionStart;
+  let start = v.lastIndexOf('\n', from - 1) + 1;
+  const rows = v.split('\n');
+  let idx = v.slice(0, start).split('\n').length - 1;
+  // walk back to the first item of this list
+  while (idx > 0 && /^\s*\d+[.)]\s+/.test(rows[idx - 1])) idx--;
+  let n = 0;
+  for (let i = idx; i < rows.length && /^\s*\d+[.)]\s+/.test(rows[i]); i++) rows[i] = rows[i].replace(/^(\s*)\d+([.)])/, (_, sp, p) => `${sp}${++n}${p}`);
+  const nv = rows.join('\n');
+  const shift = nv.length - v.length;
+  ta.value = nv;
+  ta.setSelectionRange(keep + shift, keep + shift);
 }
 /** The forum speaks BBCode: turn the WhatsApp-style marks into [b], [i], [strike], [code], [quote], [list]. */
 function toBBCode(t) {
@@ -907,6 +975,8 @@ async function openConv(c) {
   if (!c.id) { drawChat(cv, true); return; }
   try {
     await fetchMsgs(cv, false);
+    const unread = cv.items.filter((m) => m.authorId !== forum.me && !m.isViewed && (!m.state || m.state === 'Active'));
+    if (unread.length) { cv.firstUnread = unread[0].id; cv.unreadN = unread.length; }
     drawChat(cv, true);
     markViewed(cv);
   } catch (e) {
@@ -931,15 +1001,16 @@ async function pollChat(cv) {
     const d = await gql(`query M($c:Int!,$l:Int!){ messages(conversationId:$c, limit:$l){ items{ ${MSG_FIELDS} } } }`, { c: cv.c.id, l: 20 });
     const fresh = d.messages?.items || [];
     const known = new Map(cv.items.map((m) => [m.id, m]));
-    let changed = false;
+    let changed = false, added = 0;
     fresh.forEach((m) => {
       const k = known.get(m.id);
-      if (!k) { cv.items.push(m); changed = true; if (m.authorId !== forum.me) cv.waiting = 0; }
+      if (!k) { cv.items.push(m); changed = true; if (m.authorId !== forum.me) { cv.waiting = 0; added++; } }
       else if (k.reaction !== m.reaction || k.isViewed !== m.isViewed || k.state !== m.state || k.body !== m.body) { Object.assign(k, m); changed = true; }
     });
     if (changed && forum.conv === cv) {
       const box = cv.el.querySelector('.wa-msgs');
       const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+      if (!atBottom && added) cv.newWhileUp = (cv.newWhileUp || 0) + added;
       drawChat(cv, atBottom);
       markViewed(cv);
     }
@@ -964,6 +1035,7 @@ function drawChat(cv, scrollBottom) {
     lastAuthor = m.authorId;
     const gone = m.state && m.state !== 'Active';
     const rt = m.replyTo;
+    if (cv.firstUnread && m.id === cv.firstUnread) { html += `<div class="unread-chip" data-unread>${cv.unreadN === 1 ? '1 נייע מעסעדזש' : cv.unreadN + ' נייע מעסעדזשעס'}</div>`; lastAuthor = null; }
     html += `<div class="msg ${mine ? 'out' : 'in'}${cont ? ' cont' : ''}" data-m="${m.id}">
       <div class="bub">
         ${rt ? `<blockquote class="rq" data-reply="${esc(rt.id)}"><b>${rt.authorId === forum.me ? 'דו' : esc(o.username || '')}</b><br>${esc((rt.body || '').slice(0, 160))}</blockquote>` : ''}
@@ -1004,7 +1076,32 @@ function drawChat(cv, scrollBottom) {
     const before = box.scrollHeight - box.scrollTop;
     try { await fetchMsgs(cv, true); drawChat(cv, false); box.scrollTop = box.scrollHeight - before; } catch (e) { toast(errText(e)); }
   };
-  if (scrollBottom) box.scrollTop = box.scrollHeight;
+  const mark = box.querySelector('[data-unread]');
+  if (scrollBottom && mark && !cv.shownUnread) { cv.shownUnread = true; mark.scrollIntoView({ block: 'start' }); box.scrollTop -= 8; }
+  else if (scrollBottom) box.scrollTop = box.scrollHeight;
+  downButton(cv, box);
+}
+
+/** WhatsApp-style ↓: shows when you're scrolled up, with how many new messages came in since. */
+function downButton(cv, box) {
+  const screen = cv.el;
+  let btn = screen.querySelector('.to-bottom');
+  if (!btn) {
+    btn = document.createElement('button');
+    btn.className = 'to-bottom hidden';
+    btn.innerHTML = '<span>↓</span><b class="tb-n hidden"></b>';
+    screen.appendChild(btn);
+    btn.onclick = () => { box.scrollTo({ top: box.scrollHeight, behavior: 'smooth' }); };
+    box.addEventListener('scroll', () => {
+      const up = box.scrollHeight - box.scrollTop - box.clientHeight > 300;
+      btn.classList.toggle('hidden', !up);
+      if (!up) { cv.newWhileUp = 0; btn.querySelector('.tb-n').classList.add('hidden'); }
+    });
+  }
+  const n = cv.newWhileUp || 0;
+  const badge = btn.querySelector('.tb-n');
+  badge.textContent = n > 99 ? '99+' : n;
+  badge.classList.toggle('hidden', !n);
 }
 
 function msgMenu(cv, m) {
@@ -1014,13 +1111,58 @@ function msgMenu(cv, m) {
     <div class="list" style="margin:12px 0 0">
       <button class="item" data-x="reply"><span class="ic">↩️</span><span class="grow t">ריפליי</span></button>
       <button class="item" data-x="copy"><span class="ic">📋</span><span class="grow t">קאפי</span></button>
+      ${m.authorId === forum.me && (m.type || 'Text') === 'Text' && !m.pending ? '<button class="item" data-x="edit"><span class="ic">✏️</span><span class="grow t">פאררעכט</span></button>' : ''}
+      ${m.pending ? '' : '<button class="item danger" data-x="del"><span class="ic">🗑️</span><span class="grow t" style="color:var(--red)">פארמעק</span></button>'}
     </div>`);
+  $('#modal [data-x=edit]') && ($('#modal [data-x=edit]').onclick = () => editMsg(cv, m));
+  $('#modal [data-x=del]') && ($('#modal [data-x=del]').onclick = () => delMsg(cv, m));
   document.querySelectorAll('#modal [data-r]').forEach((b) => (b.onclick = () => { closeModal(); react(cv, m, m.reaction === b.dataset.r ? null : b.dataset.r); }));
   $('#modal [data-x=reply]').onclick = () => { closeModal(); setReply(cv, m); };
   $('#modal [data-x=copy]').onclick = () => {
     closeModal();
     try { navigator.clipboard.writeText(m.body || ''); toast('קאפיד'); } catch { toast('קען נישט קאפיען'); }
   };
+}
+
+/** Edit my message (the site's "UpdateMessage"). */
+function editMsg(cv, m) {
+  openModal(`<h2 style="font-size:17px">פאררעכט די מעסעדזש</h2>
+    <textarea id="emBody" class="field no-drag" rows="5" dir="auto" style="width:100%;margin:10px 0 12px">${esc(m.body || '')}</textarea>
+    <button class="btn" id="emSave">היט אפ</button>`);
+  const ta = $('#emBody');
+  ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+  $('#emSave').onclick = async () => {
+    const body = ta.value.trim();
+    if (!body || body === m.body) return closeModal();
+    $('#emSave').disabled = true;
+    try {
+      await gql(`mutation U($data:UpdateMessageInput!){ updateMessage(data:$data){ id body } }`, { data: { messageId: m.id, body, attachmentsIds: [] } });
+      m.body = body; m.edited = true;
+      closeModal(); drawChat(cv, false); toast('פאררעכט');
+    } catch (e) { $('#emSave').disabled = false; toast(errText(e)); }
+  };
+}
+
+/** Delete: mine for everyone or just for me; someone else's only from my side. */
+function delMsg(cv, m) {
+  const mine = m.authorId === forum.me;
+  openModal(`<h2 style="font-size:17px">פארמעקן די מעסעדזש?</h2>
+    <div class="list" style="margin:12px 0 0">
+      ${mine ? '<button class="item" data-d="all"><span class="ic">🗑️</span><span class="grow t" style="color:var(--red)">פארמעק פאר אלעמען</span></button>' : ''}
+      <button class="item" data-d="self"><span class="ic">🙈</span><span class="grow t">פארמעק נאר פאר מיר</span></button>
+      <button class="item" data-close><span class="ic">✕</span><span class="grow t">צוריק</span></button>
+    </div>`);
+  document.querySelectorAll('#modal [data-d]').forEach((b) => (b.onclick = async () => {
+    const all = b.dataset.d === 'all';
+    closeModal();
+    try {
+      await gql(all ? 'mutation D($m:Int!){ deleteMessageForAll(messageId:$m) }' : 'mutation D($m:Int!){ deleteMessageForSelf(messageId:$m) }', { m: m.id });
+      if (all) m.state = 'Deleted';
+      else cv.items = cv.items.filter((x) => x.id !== m.id);
+      drawChat(cv, false);
+      toast('פארמעקט');
+    } catch (e) { toast(errText(e)); }
+  }));
 }
 
 async function react(cv, m, r) {
@@ -1219,6 +1361,7 @@ async function openCategory(c) {
       <button class="wa-icon" data-back aria-label="צוריק">${icon('back')}</button>
       ${catAvatar(c).replace('wa-av grp', 'wa-av grp sm')}
       <div class="grow" style="min-width:0"><div class="wa-title">${esc(c.title)}</div><div class="wa-subt">${esc(c.topics ? c.topics + ' טעמעס' : c.desc)}</div></div>
+      <button class="wa-icon hidden" data-read aria-label="צייכן אָן אלס געליינט" title="צייכן אָן אלס געליינט">✓✓</button>
       <button class="wa-icon" data-new aria-label="נייע טעמע">${icon('pen')}</button>
     </header>
     ${c.desc ? `<div class="wa-desc">${esc(c.desc)}</div>` : ''}
@@ -1246,9 +1389,23 @@ async function openCategory(c) {
   try {
     if (!forum.lists[key] || Date.now() - forum.lists[key].at > 3 * 60_000) {
       const doc = await site(`/forum?func=showcat&catid=${c.catid}`);
-      forum.lists[key] = { rows: parseTopics(doc), at: Date.now(), next: nextPage(doc) };
+      forum.lists[key] = { rows: parseTopics(doc), at: Date.now(), next: nextPage(doc), markRead: doc.querySelector('a[href*="func=markthisread"]')?.getAttribute('href') || null };
     }
     draw();
+    // the site's own "mark topics as read" for this group
+    const mr = el.querySelector('[data-read]');
+    if (forum.lists[key].markRead && forum.lists[key].rows.some((r) => r.unread)) {
+      mr.classList.remove('hidden');
+      mr.onclick = async () => {
+        mr.disabled = true;
+        try {
+          await site(forum.lists[key].markRead);
+          forum.lists[key].rows.forEach((r) => (r.unread = 0));
+          if (forum.lists.recent) forum.lists.recent.at = 0;
+          draw(); mr.classList.add('hidden'); toast('אלעס אנגעצייכנט אלס געליינט');
+        } catch (e) { mr.disabled = false; toast(errText(e)); }
+      };
+    }
   } catch (e) {
     el.querySelector('.wa-list').innerHTML = `<div class="center muted" style="padding:40px">${errText(e)}</div>`;
   }
@@ -1301,7 +1458,8 @@ async function loadTopics(filter, force) {
 function drawTopicsSection() {
   const box = $('#fsec');
   const f = forum.filter;
-  const chips = `<div class="wa-chips">${FILTERS.map((x) => `<button data-f="${x.id}" class="${f === x.id ? 'on' : ''}">${x.t}</button>`).join('')}</div>`;
+  const nUnread = forum.lists.recent ? forum.lists.recent.rows.filter((r) => r.unread).length : 0;
+  const chips = `<div class="wa-chips">${FILTERS.map((x) => `<button data-f="${x.id}" class="${f === x.id ? 'on' : ''}">${x.t}${x.id === 'unread' && nUnread ? ` <span class="chip-n">${nUnread}</span>` : ''}</button>`).join('')}</div>`;
   let rows;
   if (f === 'pinned') rows = Object.values(loadPins()).sort((a, b) => b.at - a.at);
   else if (f === 'unread' && forum.lists.recent) rows = forum.lists.recent.rows.filter((r) => r.unread);
@@ -1508,6 +1666,8 @@ async function fetchThreadPage(topic, start) {
 async function openThread(topic) {
   const t = { topic, pages: [], title: topic.title, reply: null, lowest: null, sending: false };
   forum.thread = t;
+  // how many posts are new for me (the site's "(N ניי)"), to mark where they start
+  t.newN = topic.jumpTo || topic.start != null ? 0 : +topic.unread || 0;
   topic.unread = 0;
   const el = chatScreen({
     title: topic.title,
@@ -1549,7 +1709,9 @@ function drawThread(scrollBottom) {
   const posts = t.pages.flatMap((p) => p.posts).filter((p) => !seen.has(String(p.id)) && seen.add(String(p.id)));
   let html = t.lowest > 0 ? '<button class="day-chip more" data-older>↑ פריערדיגע מעלדונגען</button>' : '';
   let lastDay = '', lastAuthor = '';
-  posts.forEach((p) => {
+  const firstNew = t.newN > 0 ? Math.max(0, posts.length - t.newN) : -1;
+  posts.forEach((p, i) => {
+    if (i === firstNew) { html += `<div class="unread-chip" data-unread>${t.newN === 1 ? '1 נייע מעלדונג' : t.newN + ' נייע מעלדונגען'}${t.newN > posts.length ? ' · מער פריער ↑' : ''}</div>`; lastAuthor = ''; }
     const time = (p.when.match(/\d{1,2}:\d{2}\s*[AP]M$/i) || [''])[0];
     const day = p.when.replace(time, '').trim();
     if (day && day !== lastDay) { html += `<div class="day-chip">${esc(day)}</div>`; lastDay = day; lastAuthor = ''; }
@@ -1591,7 +1753,9 @@ function drawThread(scrollBottom) {
     if (target) { setTimeout(() => { target.scrollIntoView({ block: 'center' }); target.classList.add('flash'); }, 60); scrollBottom = false; }
   }
   if (!t.reply) t.el.querySelector('.wa-compose').innerHTML = '<div class="wa-locked">מען קען נישט ענטפערן אויף די טעמע</div>';
-  if (scrollBottom) box.scrollTop = box.scrollHeight;
+  const mark = box.querySelector('[data-unread]');
+  if (scrollBottom && mark && !t.shownUnread) { t.shownUnread = true; mark.scrollIntoView({ block: 'start' }); box.scrollTop -= 8; }
+  else if (scrollBottom) box.scrollTop = box.scrollHeight;
 }
 
 async function loadOlder(btn) {

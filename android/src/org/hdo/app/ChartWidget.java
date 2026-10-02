@@ -22,16 +22,10 @@ public class ChartWidget extends AppWidgetProvider {
 
     @Override
     public void onUpdate(Context ctx, AppWidgetManager mgr, int[] ids) {
+        // No network here: reading the site's dashboard in the background makes the site count
+        // the day as updated on the 90-day chart. The day count ticks locally from the streak start;
+        // fresh numbers come when the app is opened or the chart is updated.
         render(ctx);
-        PendingResult pr = goAsync();
-        new Thread(() -> {
-            try {
-                if (Store.loggedIn(ctx)) Api.refreshSummary(ctx, true);
-                render(ctx);
-            } finally {
-                pr.finish();
-            }
-        }).start();
     }
 
     /** Fetch fresh numbers in the background, then redraw every widget. */

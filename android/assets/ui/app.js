@@ -162,6 +162,8 @@ function boot() {
 
 window.onNativeAction = (a) => {
   if (a === 'setback') { go('home'); setbackSheet(); }
+  // tapped a "new message" notification: straight into that chat
+  if (a.startsWith('chat:')) openChatById(a.slice(5));
 };
 window.onResumeApp = () => {
   // came back from signing up (or logging in) on the website: the app picked up the login
@@ -1164,6 +1166,11 @@ function renderMore() {
         <button class="linkbtn" id="rTest">שיק א טעסט</button>
         ${N.notifAllowed() ? '' : '<div class="warn">נאטיפיקעישאנס זענען אפ אין די פאון סעטינגס</div>'}
       </div>
+      <label class="srow">
+        <span class="sic" style="--c:#6366f1">${icon('chat')}</span>
+        <span class="grow"><span class="st">נייע מעסעדזשעס</span><span class="ss">א נאטיפיקעישאן ווען איינער שרייבט דיר אין לייוו טשעט</span></span>
+        <span class="switch"><input type="checkbox" id="mOn" ${s.msgNotif !== false ? 'checked' : ''}><i></i></span>
+      </label>
     </div>
 
     <div class="section-title">הילף</div>
@@ -1192,11 +1199,12 @@ function renderMore() {
 
   const save = () => {
     const ts = [...document.querySelectorAll('#rTimes input[type=time]')].map((x) => x.value).filter(Boolean);
-    const next = { remind: $('#rOn').checked, times: ts.length ? ts : ['21:00'], skipIfDone: $('#rSkip').checked, skipShabbos: $('#rShab').checked };
+    const next = { remind: $('#rOn').checked, times: ts.length ? ts : ['21:00'], skipIfDone: $('#rSkip').checked, skipShabbos: $('#rShab').checked, msgNotif: $('#mOn').checked };
     N.setSettings(JSON.stringify(next));
     return next;
   };
   $('#rOn').onchange = () => { save(); $('#rBody').classList.toggle('hidden', !$('#rOn').checked); toast($('#rOn').checked ? 'רימיינדערס זענען אן' : 'רימיינדערס זענען אפ'); };
+  $('#mOn').onchange = () => { save(); toast($('#mOn').checked ? 'מעסעדזש נאטיפיקעישאנס זענען אן' : 'מעסעדזש נאטיפיקעישאנס זענען אפ'); };
   $('#lockOn').onchange = (e) => { const on = e.target.checked; e.target.checked = !on; N.setLock(on); };
   $('#rSkip').onchange = save;
   $('#rShab').onchange = save;

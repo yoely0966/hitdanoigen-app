@@ -14,6 +14,7 @@ public class ReminderReceiver extends BroadcastReceiver {
     public void onReceive(Context ctx, Intent intent) {
         Context app = ctx.getApplicationContext();
         Reminders.schedule(app); // always re-arm the next day first
+        MsgReceiver.schedule(app);
         if (!Reminders.ACTION.equals(intent.getAction())) {
             ChartWidget.render(app);
             return;
@@ -22,18 +23,11 @@ public class ReminderReceiver extends BroadcastReceiver {
         if (!s.optBoolean("remind") || !Store.loggedIn(app)) return;
         if (s.optBoolean("skipShabbos", true) && Reminders.isShabbos(Calendar.getInstance())) return;
 
-        PendingResult pr = goAsync();
-        new Thread(() -> {
-            try {
-                // only a quick check with the current token; if it can't tell, remind anyway
-                JSONObject sum = Api.refreshSummary(app, false);
-                if (sum == null) sum = ChartWidget.summary(app);
-                ChartWidget.render(app);
-                if (s.optBoolean("skipIfDone", true) && sum != null && ChartWidget.doneToday(sum)) return;
-                Reminders.notify(app, ChartWidget.daysClean(app, sum));
-            } finally {
-                pr.finish();
-            }
-        }).start();
+        // Uses only what the phone already knows: asking the site here would itself mark the day
+        // as updated on the 90-day chart.
+        JSONObject sum = ChartWidget.summary(app);
+        ChartWidget.render(app);
+        if (s.optBoolean("skipIfDone", true) && sum != null && ChartWidget.doneToday(sum)) return;
+        Reminders.notify(app, ChartWidget.daysClean(app, sum));
     }
 }

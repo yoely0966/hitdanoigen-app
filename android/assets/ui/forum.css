@@ -332,3 +332,14 @@ body.wa #fsec { padding-bottom: 250px; }
 .wa-head.center-head { display: grid; grid-template-columns: 48px 1fr 48px; align-items: center; }
 .wa-head.center-head .wa-h1 { text-align: center; }
 .wa-head.center-head .me-ring { margin: 0; justify-self: end; }
+
+/* unread */
+.unread-chip { align-self: center; margin: 10px auto; padding: 5px 14px; border-radius: 99px; background: rgba(139,98,255,.14); color: var(--wa-accent, #8b62ff); font-size: 13px; font-weight: 700; text-align: center; width: fit-content; }
+.to-bottom { position: absolute; left: 14px; bottom: calc(86px + env(safe-area-inset-bottom)); z-index: 5; width: 44px; height: 44px; border-radius: 50%;
+  background: var(--wa-panel); color: var(--wa-accent, #8b62ff); font-size: 20px; font-weight: 800; box-shadow: 0 4px 14px rgba(0,0,0,.2); }
+.to-bottom.hidden { display: none; }
+.to-bottom .tb-n { position: absolute; top: -6px; right: -4px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 99px; background: #8b62ff; color: #fff; font-size: 11px; line-height: 20px; }
+.to-bottom .tb-n.hidden { display: none; }
+.chip-n { display: inline-block; min-width: 18px; padding: 0 5px; margin-inline-start: 4px; border-radius: 99px; background: #8b62ff; color: #fff; font-size: 11px; line-height: 18px; text-align: center; }
+.wa-icon[data-read] { font-size: 15px; font-weight: 800; color: #fff; }
+.wa-icon.hidden { display: none; }

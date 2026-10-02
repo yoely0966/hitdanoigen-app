@@ -76,6 +76,10 @@
             android:exported="false" />
 
         <receiver
+            android:name=".MsgReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".ReminderReceiver"
             android:exported="true">
             <intent-filter>

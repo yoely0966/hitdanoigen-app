@@ -89,6 +89,12 @@ public class MainActivity extends Activity {
         pendingAction = getIntent().getStringExtra("action");
         web.loadUrl(UI);
         Reminders.schedule(this);
+        MsgReceiver.schedule(this);
+        // message notifications are on unless turned off: ask for the permission once (Android 13+)
+        if (MsgReceiver.enabled(this) && !Store.prefs(this).getBoolean("askedNotif", false)) {
+            Store.prefs(this).edit().putBoolean("askedNotif", true).apply();
+            askNotifPermission();
+        }
         startStaffWatch();
     }
 
@@ -105,6 +111,8 @@ public class MainActivity extends Activity {
         if (AppLock.needed(this)) lock(false);
         else if (cover != null && cover.getVisibility() == View.VISIBLE && !prompting) showCover(false);
         js("window.onResumeApp&&window.onResumeApp()");
+        // the app is open anyway (it reads the dashboard), so bring the widget up to date too
+        if (Store.loggedIn(this)) ChartWidget.refreshAsync(this);
     }
 
     @Override
@@ -334,8 +342,9 @@ public class MainActivity extends Activity {
             try {
                 JSONObject o = new JSONObject(json);
                 Store.put(MainActivity.this, "settings", o.toString());
-                if (o.optBoolean("remind")) askNotifPermission();
+                if (o.optBoolean("remind") || o.optBoolean("msgNotif", true)) askNotifPermission();
                 Reminders.schedule(MainActivity.this);
+                MsgReceiver.schedule(MainActivity.this);
             } catch (Exception ignored) {}
         }
 

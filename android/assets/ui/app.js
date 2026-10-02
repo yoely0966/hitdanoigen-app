@@ -415,7 +415,7 @@ function renderHome() {
         ${goal.at ? `<img src="${awardImg(Math.min(LEVELS.length, lvl + 1))}" alt="" onerror="this.style.visibility='hidden'">` : ''}
         <div class="grow">
           <div class="t">${lvl ? `שטאפל ${lvl} · ${esc(LEVELS[lvl - 1].n)}` : 'דיין רייזע הייבט זיך אן! 🌱'}</div>
-          <div class="s">נאך <b>${goal.at - days}</b> ${goal.at - days === 1 ? 'טאג' : 'טעג'} ביז ${esc(goal.label)} 🎯</div>
+          <div class="s">נאך <b id="cLeft">${esc(timeLeft(start, goal.at, days))}</b> ביז ${esc(goal.label)} 🎯</div>
           <div class="bar"><i style="width:${Math.max(3, Math.round(goal.pct * 100))}%"></i></div>
         </div>
       </div>
@@ -443,10 +443,10 @@ function renderHome() {
 
     <div class="section-title">סטאטיסטיקס</div>
     <div class="stats">
-      <div class="stat"><b class="num">${prog?.victories ?? st.cleanDaysCount ?? 0}</b><span>ריינע טעג אינגאנצן</span></div>
-      <div class="stat"><b class="num">${prog?.longestStreak ?? 0}</b><span>לענגסטע טעג ריין</span></div>
-      <div class="stat"><b class="num">${prog?.successRate ?? st.successRate ?? 0}%</b><span>סוקסעס ראטע</span></div>
-      <div class="stat"><b class="num">${prog?.setbacks ?? 0}</b><span>דורכפעלער</span></div>
+      <div class="stat"><b class="num">${prog ? prog.setbacks ?? 0 : '–'}</b><span>דורכפעלער</span></div>
+      <div class="stat"><b class="num">${prog ? prog.victories ?? 0 : '–'}</b><span>געווינסן</span></div>
+      <div class="stat"><b class="num">${prog ? (prog.successRate ?? 0) + '%' : '–'}</b><span>סוקסעס ראטע</span></div>
+      <div class="stat"><b class="num">${prog ? prog.longestStreak ?? 0 : '–'}</b><span>לענגסטע שטרעקע</span></div>
     </div>
 
     ${lb.userList?.length ? `
@@ -496,6 +496,17 @@ function handbookCard() {
 }
 
 let clockT = 0;
+/** Time left to a goal like the site counts it: exact from the streak start, in hours on the last day. */
+function timeLeft(start, atDays, days) {
+  if (!start) { const n = atDays - days; return n === 1 ? '1 טאג' : n + ' טעג'; }
+  const ms = start.getTime() + atDays * 86400000 - Date.now();
+  if (ms <= 60000) return '1 מינוט';
+  if (ms < 3600000) { const m = Math.ceil(ms / 60000); return m === 1 ? '1 מינוט' : m + ' מינוט'; }
+  if (ms < 86400000) { const h = Math.ceil(ms / 3600000); return h === 1 ? '1 שעה' : h + ' שעות'; }
+  const d = Math.ceil(ms / 86400000);
+  return d === 1 ? '1 טאג' : d + ' טעג';
+}
+
 function startClock(start) {
   stopClock();
   if (!start) return;
@@ -503,7 +514,11 @@ function startClock(start) {
     const ms = Date.now() - start;
     if (!$('#cDays')) return stopClock();
     const d = Math.floor(ms / 86400000), rest = ms % 86400000;
+    // a new day began while the screen is open: redraw so the ring, level and goal move too
+    if (String(d) !== $('#cDays').textContent && $('#cDays').textContent !== '') { stopClock(); return renderHome(); }
     $('#cDays').textContent = d;
+    const left = $('#cLeft');
+    if (left && rest % 60000 < 1000) { const g = nextGoal(d); left.textContent = timeLeft(start, g.at, d); }
     $('#cH').textContent = pad(Math.floor(rest / 3600000));
     $('#cM').textContent = pad(Math.floor((rest % 3600000) / 60000));
     $('#cS').textContent = pad(Math.floor((rest % 60000) / 1000));

@@ -1842,12 +1842,124 @@ function postMenu(t, post, row) {
       ${post.like ? `<button class="item" data-x="like"><span class="ic">👍</span><span class="grow t">א דאנק</span></button>` : ''}
       <button class="item" data-x="copy"><span class="ic">📋</span><span class="grow t">קאפי</span></button>
       <button class="item" data-x="prof"><span class="ic">👤</span><span class="grow t">זע פראפייל</span></button>
+      ${isMinePost(t, post) ? `<button class="item" data-x="edit"><span class="ic">✏️</span><span class="grow t">פאררעכט</span></button>
+      <button class="item" data-x="del"><span class="ic">🗑️</span><span class="grow t" style="color:var(--red)">פארמעק</span></button>` : ''}
     </div>`);
   const on = (k, fn) => { const b = $(`#modal [data-x=${k}]`); if (b) b.onclick = () => { closeModal(); fn(); }; };
+  on('edit', () => editPost(t, post));
+  on('del', () => deletePost(t, post));
   on('reply', () => setPostReply(t, post));
   on('like', () => { const b = row.querySelector('[data-like]'); if (b) likePost(b); });
   on('copy', () => { try { navigator.clipboard.writeText(postText(post)); toast('קאפיד'); } catch { toast('קען נישט קאפיען'); } });
   on('prof', () => showProfile({ username: post.author, forumUrl: post.uid ? `${SITE}/forum/profile?func=profile&userid=${post.uid}` : null }));
+}
+
+/* ---------- edit / delete my forum posts (the forum's own edit & delete forms) ---------- */
+function isMinePost(t, post) {
+  const me = (t.reply?.me || N.username() || '').trim().toLowerCase();
+  return !!me && post.author.trim().toLowerCase() === me;
+}
+
+/** Every value a form would send, like the browser does. */
+function formFields(form) {
+  const f = {};
+  form.querySelectorAll('input, textarea, select').forEach((el) => {
+    const n = el.getAttribute('name');
+    if (!n || el.disabled) return;
+    const type = (el.getAttribute('type') || '').toLowerCase();
+    if (['file', 'button', 'reset', 'image'].includes(type)) return;
+    if (type === 'submit') { if (!Object.values(f).length || !(n in f)) f[n] = el.value; return; }
+    if ((type === 'checkbox' || type === 'radio') && !el.hasAttribute('checked')) return;
+    if (el.tagName === 'SELECT') { const o = el.querySelector('option[selected]') || el.querySelector('option'); f[n] = o ? o.getAttribute('value') ?? o.textContent : ''; return; }
+    f[n] = el.tagName === 'TEXTAREA' ? el.textContent : el.getAttribute('value') ?? '';
+  });
+  return f;
+}
+
+/** The forum's BBCode back into the app's simple marks, so the editor looks like the message box. */
+function bbToMarks(bb) {
+  return bb
+    .replace(/\r/g, '')
+    .replace(/\[b\]([\s\S]*?)\[\/b\]/gi, '*$1*')
+    .replace(/\[i\]([\s\S]*?)\[\/i\]/gi, '_$1_')
+    .replace(/\[(s|strike)\]([\s\S]*?)\[\/\1\]/gi, '~$2~')
+    .replace(/\[ol\]([\s\S]*?)\[\/ol\]\n?/gi, (_, b) => { let n = 0; return b.replace(/\[li\]([\s\S]*?)\[\/li\]/gi, (_, x) => `${++n}. ${x}\n`); })
+    .replace(/\[ul\]([\s\S]*?)\[\/ul\]\n?/gi, (_, b) => b.replace(/\[li\]([\s\S]*?)\[\/li\]/gi, (_, x) => `• ${x}\n`))
+    .replace(/\n+$/, '');
+}
+
+/** Put the post (as the forum now shows it) back into the open topic. */
+function refreshPostFrom(t, html, pid) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const page = parseThread(doc);
+  const fresh = page.posts.find((x) => String(x.id) === String(pid));
+  if (fresh) t.pages.forEach((pg) => { const i = pg.posts.findIndex((x) => String(x.id) === String(pid)); if (i >= 0) pg.posts[i] = fresh; });
+  return { fresh, page };
+}
+
+async function editPost(t, post) {
+  toast('עפנט…');
+  let doc;
+  try { doc = await site(`/forum?func=post&do=edit&catid=${t.topic.catid}&id=${post.id}`); } catch (e) { return toast(errText(e)); }
+  const ta0 = doc.querySelector('form textarea[name="message"]');
+  const form = ta0?.closest('form');
+  if (!form) return toast('דער פארום לאזט נישט פאררעכטן די מעלדונג (אפשר איז די צייט דערפאר שוין פארביי)');
+  const subj0 = form.querySelector('[name="subject"]')?.getAttribute('value') || '';
+  openModal(`<h2 style="font-size:17px">פאררעכט די מעלדונג</h2>
+    <input id="epSubj" class="no-drag" dir="auto" value="${esc(subj0)}" style="width:100%;margin:10px 0 8px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--bg)">
+    <textarea id="epBody" class="no-drag" rows="9" dir="auto" style="width:100%;margin:0 0 12px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--bg)">${esc(bbToMarks(ta0.textContent))}</textarea>
+    <button class="btn" id="epSave">היט אפ</button>`);
+  const ta = $('#epBody');
+  listKeys(ta);
+  ta.focus();
+  $('#epSave').onclick = async () => {
+    const body = ta.value.trim();
+    if (!body) return toast('די מעלדונג איז ליידיג');
+    $('#epSave').disabled = true;
+    const fields = formFields(form);
+    fields.message = toBBCode(body);
+    if ('subject' in fields || $('#epSubj').value.trim()) fields.subject = $('#epSubj').value.trim() || subj0;
+    const r = await httpForm(absUrl(form.getAttribute('action') || '/forum?func=post'), fields);
+    if (!r.ok) { $('#epSave').disabled = false; return toast(r.status === 0 ? 'קיין אינטערנעט' : 'דער פארום האט נישט אנגענומען די ענדערונג'); }
+    closeModal();
+    const { fresh } = refreshPostFrom(t, r.body, post.id);
+    const plain = (x) => norm(x).replace(/[^\p{L}\p{N} ]/gu, '');
+    if (fresh && plain(postText(fresh)).includes(plain(body).slice(0, 30))) { drawThread(false); toast('פאררעכט ✓'); }
+    else { drawThread(false); toast('געשיקט – אויב עס ווייזט זיך נישט, האט דער פארום עס נישט אנגענומען'); }
+  };
+}
+
+async function deletePost(t, post) {
+  openModal(`<h2 style="font-size:17px">פארמעקן די מעלדונג?</h2>
+    <p>מען קען עס נישט צוריקברענגען.</p>
+    <div class="list" style="margin:12px 0 0">
+      <button class="item" data-d="yes"><span class="ic">🗑️</span><span class="grow t" style="color:var(--red)">יא, פארמעק</span></button>
+      <button class="item" data-close><span class="ic">✕</span><span class="grow t">ניין</span></button>
+    </div>`);
+  $('#modal [data-d=yes]').onclick = async () => {
+    closeModal();
+    toast('מעקט אויס…');
+    let doc;
+    try { doc = await site(`/forum?func=post&do=delete&catid=${t.topic.catid}&id=${post.id}`); } catch (e) { return toast(errText(e)); }
+    // the forum's own confirmation: a form, or a real "yes" link
+    const form = [...doc.querySelectorAll('form')].find((f) => /delete/i.test((f.getAttribute('action') || '') + [...f.querySelectorAll('input')].map((i) => i.getAttribute('value') || '').join(' ')));
+    const link = [...doc.querySelectorAll('a[href*="delete"]')].map((a) => a.getAttribute('href')).find((h) => h && h !== '#' && /deletepost|do=delete.*(confirm|now)/i.test(h));
+    let r;
+    if (form) r = await httpForm(absUrl(form.getAttribute('action') || '/forum?func=post'), formFields(form));
+    else if (link) r = await http('GET', absUrl(link));
+    else return toast('דער פארום לאזט נישט פארמעקן די מעלדונג – פרעג א מאדעראטאר');
+    if (!r.ok) return toast(r.status === 0 ? 'קיין אינטערנעט' : 'דער פארום האט עס נישט אויסגעמעקט');
+    // check on the topic itself that the post is gone
+    try {
+      const page = await fetchThreadPage(t.topic, null);
+      const still = page.posts.some((x) => String(x.id) === String(post.id)) || r.body.includes(`id="${post.id}"`) && r.body.includes(postText(post).slice(0, 20));
+      if (still) return toast('דער פארום האט עס נישט אויסגעמעקט');
+    } catch {}
+    t.pages.forEach((pg) => (pg.posts = pg.posts.filter((x) => String(x.id) !== String(post.id))));
+    drawThread(false);
+    forum.lists = {};
+    toast('אויסגעמעקט ✓');
+  };
 }
 
 function setPostReply(t, post) {

@@ -248,6 +248,10 @@ public class MainActivity extends Activity {
             }
         }, "StaffBridge");
         staffWeb.setWebViewClient(new WebViewClient() {
+            @Override public android.webkit.WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest req) {
+                return UserShield.intercept(v.getContext(), req); // never let the site read the profile (it marks the chart)
+            }
+
             @Override public void onPageFinished(WebView v, String url) {
                 v.evaluateJavascript("(function w(n){if(window.Intercom){Intercom('onUnreadCountChange',function(c){StaffBridge.unread(c)})}"
                         + "else if(n<60){setTimeout(function(){w(n+1)},1000)}})(0)", null);
@@ -330,6 +334,12 @@ public class MainActivity extends Activity {
                 reply("onHttp", id, r.status, r.body);
             });
         }
+
+        /** A fall moved the streak start: keep the saved profile in step (it isn't re-read from the site). */
+        @JavascriptInterface public void setStreakStart(String iso) { UserShield.setStreakStart(MainActivity.this, iso); }
+
+        /** The saved profile (see UserShield). */
+        @JavascriptInterface public String cachedUser() { return UserShield.cached(MainActivity.this); }
 
         @JavascriptInterface public void checkedIn(boolean setback) {
             if (setback) Store.prefs(MainActivity.this).edit().putLong("streakStartAt", 0).apply();

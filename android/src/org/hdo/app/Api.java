@@ -52,8 +52,12 @@ public final class Api {
         boolean api = url.startsWith(API) || url.startsWith(CHAT);
         if (url.startsWith(API) && !url.contains("language=")) url += (url.contains("?") ? "&" : "?") + "language=yi";
 
+        // the profile is read once and then kept: reading it makes the site mark the day on the chart
+        boolean profile = "GET".equals(method) && UserShield.isUserUrl(url);
+        if (profile && UserShield.cached(app) != null) return new Resp(200, UserShield.cached(app));
         if (api && mayRefresh && !Store.tokenFresh(Store.token(app), 60)) Auth.refreshBlocking(app);
         Resp r = raw(app, method, url, body, contentType);
+        if (profile && r.ok() && r.body != null) UserShield.save(app, r.body);
         if (!mayRefresh) return r;
 
         boolean needLogin = api ? r.status == 401
@@ -144,7 +148,7 @@ public final class Api {
             Resp r = call(ctx, "POST", API + "/daily-check-in", b.toString());
             if (!r.ok()) return null;
             // a setback moves the streak start; make the next summary re-read it
-            if (setbackIso != null) Store.prefs(ctx).edit().putLong("streakStartAt", 0).apply();
+            if (setbackIso != null) UserShield.setStreakStart(ctx, setbackIso);
             JSONObject o = r.json();
             return o == null ? new JSONObject() : o;
         } catch (Exception e) {

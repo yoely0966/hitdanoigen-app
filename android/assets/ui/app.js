@@ -277,6 +277,7 @@ async function loadHome(quiet) {
       api('/dashboard'), api('/auth/user'), api('/dashboard/progress-dynamics?period=all-time'),
     ]);
     Object.assign(state, { dash, user, prog, homeAt: Date.now() });
+    await syncStreakStart();
     paintFab();
     if (state.tab === 'home') renderHome();
   } catch (e) {
@@ -286,6 +287,25 @@ async function loadHome(quiet) {
       $('#retry').onclick = () => { view().innerHTML = '<div class="spinner"></div>'; loadHome(); };
     }
   }
+}
+
+/**
+ * The profile is kept on the phone (reading it from the site marks the chart), so a fall reported
+ * on the website wouldn't show here. If the site's count is lower than ours, find that fall.
+ */
+async function syncStreakStart() {
+  const site = state.dash?.stats?.cleanDaysStreak;
+  if (site == null || myDays() <= site + 1) return;
+  try {
+    const ci = await api('/daily-check-in');
+    const falls = (ci.days || []).filter((x) => x.setback).map((x) => x.eventDateTime).sort();
+    const last = falls[falls.length - 1];
+    const cur = state.user?.userData?.streakStartDate;
+    if (last && (!cur || new Date(last) > new Date(cur))) {
+      N.setStreakStart(last);
+      state.user = { ...state.user, userData: { ...(state.user.userData || {}), streakStartDate: last } };
+    }
+  } catch {}
 }
 
 /** Updated today? (server flag, or the last check-in happened on today's date here) */
@@ -595,6 +615,7 @@ function setbackSheet() {
     $('#sbGo').disabled = true;
     try {
       await api('/daily-check-in', 'POST', { isSetback: true, setbackDate: d.toISOString() });
+      try { N.setStreakStart(d.toISOString()); } catch {}
       N.checkedIn(true);
       saveFallToChart(d, why, plan); // the 90-day chart keeps the answers in the diary, like the site
       openModal(`

@@ -78,11 +78,14 @@ final class UserShield {
         h.put("Cache-Control", "no-store");
         if ("OPTIONS".equalsIgnoreCase(req.getMethod())) return resp(204, "", h);
         if (!"GET".equalsIgnoreCase(req.getMethod())) return null;
+        // An expired (or missing) login must get "logged out" - that's how the site's page knows to log
+        // in again. Answered here too, so the site still never sees a profile read.
+        String auth = header(req, "Authorization");
+        String jwt = auth != null && auth.regionMatches(true, 0, "Bearer ", 0, 7) ? auth.substring(7).trim() : null;
+        if (jwt == null || !Store.tokenFresh(jwt, 30)) return resp(401, "{\"statusCode\":401,\"message\":\"Unauthorized\"}", h);
         String body = cached(app);
         if (body == null) {
             // first time only: the real request, kept for next time
-            String auth = header(req, "Authorization");
-            if (auth == null && Store.token(app) != null) auth = "Bearer " + Store.token(app);
             body = fetch(req.getUrl().toString(), auth, origin);
             if (body == null) return null; // let the page try by itself
             save(app, body);
@@ -124,7 +127,7 @@ final class UserShield {
     private static WebResourceResponse resp(int code, String body, Map<String, String> headers) {
         WebResourceResponse r = new WebResourceResponse("application/json", "utf-8",
                 new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8)));
-        r.setStatusCodeAndReasonPhrase(code, code == 204 ? "No Content" : "OK");
+        r.setStatusCodeAndReasonPhrase(code, code == 204 ? "No Content" : code == 401 ? "Unauthorized" : "OK");
         r.setResponseHeaders(headers);
         return r;
     }

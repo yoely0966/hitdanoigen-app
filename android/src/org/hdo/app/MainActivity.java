@@ -237,7 +237,8 @@ public class MainActivity extends Activity {
      */
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     void startStaffWatch() {
-        if (staffWeb != null || !Store.loggedIn(this)) return;
+        // the site's page reads the profile on start: wait until the app has its own copy to answer with
+        if (staffWeb != null || !Store.loggedIn(this) || UserShield.cached(this) == null) return;
         staffWeb = new WebView(this);
         staffWeb.getSettings().setJavaScriptEnabled(true);
         staffWeb.getSettings().setDomStorageEnabled(true);
@@ -340,6 +341,17 @@ public class MainActivity extends Activity {
 
         /** The saved profile (see UserShield). */
         @JavascriptInterface public String cachedUser() { return UserShield.cached(MainActivity.this); }
+
+        /** After the user updated the chart: make (or renew) the profile copy, then tell the page. */
+        @JavascriptInterface public void refreshProfile() {
+            new Thread(() -> {
+                boolean ok = UserShield.fetchNow(MainActivity.this);
+                runOnUiThread(() -> {
+                    if (ok) startStaffWatch();
+                    js("window.onProfile&&window.onProfile(" + ok + ")");
+                });
+            }).start();
+        }
 
         @JavascriptInterface public void checkedIn(boolean setback) {
             if (setback) Store.prefs(MainActivity.this).edit().putLong("streakStartAt", 0).apply();

@@ -160,6 +160,7 @@ function boot() {
   if (a) window.onNativeAction(a);
 }
 
+window.onProfile = (ok) => { if (ok && N.isLoggedIn()) loadHome(true); };
 window.onNativeAction = (a) => {
   if (a === 'setback') { go('home'); setbackSheet(); }
   // tapped a "new message" notification: straight into that chat
@@ -273,9 +274,11 @@ function go(tab) {
 /* ---------------- home ---------------- */
 async function loadHome(quiet) {
   try {
-    const [dash, user, prog] = await Promise.all([
-      api('/dashboard'), api('/auth/user'), api('/dashboard/progress-dynamics?period=all-time'),
-    ]);
+    // the profile comes only from the phone's copy: reading it from the site marks the day on the chart
+    const [dash, prog] = await Promise.all([api('/dashboard'), api('/dashboard/progress-dynamics?period=all-time')]);
+    let user = null;
+    try { user = JSON.parse(N.cachedUser() || 'null'); } catch {}
+    if (!user) user = { username: N.username(), userData: {} };
     Object.assign(state, { dash, user, prog, homeAt: Date.now() });
     await syncStreakStart();
     paintFab();
@@ -417,7 +420,7 @@ function renderHome() {
       <span class="blob b1"></span><span class="blob b2"></span>
       <div class="cheer">${esc(cheer(days))}</div>
       <div class="ring-row">
-      <div class="clock2 num">
+      <div class="clock2 num"${start ? '' : ' style="display:none"'}>
         <span><b id="cH">00</b> שעות</span><span><b id="cM">00</b> מינוט</span><span><b id="cS">00</b> סעק</span>
       </div>
       <div class="ring-wrap">
@@ -555,6 +558,7 @@ async function checkInClean() {
   try {
     const r = await api('/daily-check-in', 'POST', { isSetback: false });
     N.checkedIn(false);
+    N.refreshProfile(); // the day is marked now anyway: a good moment to renew the profile copy
     const streak = r?.cleanDaysStreak ?? state.dash?.stats?.cleanDaysStreak;
     const lvlUp = r?.levelAchieved;
     const rankTxt = r?.rank ? `<br>דו ביסט יעצט #${esc(r.rank)}${r.prevRank && r.prevRank > r.rank ? ` (ארויף פון #${esc(r.prevRank)})` : ''}` : '';
@@ -617,6 +621,7 @@ function setbackSheet() {
       await api('/daily-check-in', 'POST', { isSetback: true, setbackDate: d.toISOString() });
       try { N.setStreakStart(d.toISOString()); } catch {}
       N.checkedIn(true);
+      N.refreshProfile();
       saveFallToChart(d, why, plan); // the 90-day chart keeps the answers in the diary, like the site
       openModal(`
         <div class="celebrate">💪</div>

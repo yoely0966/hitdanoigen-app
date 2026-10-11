@@ -63,8 +63,27 @@ final class UserShield {
         } catch (Exception ignored) {}
     }
 
-    /** For WebViews: answer GET /auth/user from the copy (the first time, fetch it once and keep it). */
-    static WebResourceResponse intercept(Context ctx, WebResourceRequest req) {
+    /**
+     * The one real profile read: only right after the user updated the chart (or reported a fall),
+     * when marking the day is what they just did anyway.
+     */
+    static boolean fetchNow(Context ctx) {
+        Context app = ctx.getApplicationContext();
+        String t = Store.token(app);
+        if (t == null) return false;
+        String body = fetch(Api.API + "/auth/user?language=yi", "Bearer " + t, Auth.APP);
+        if (body == null) return false;
+        save(app, body);
+        return true;
+    }
+
+    static WebResourceResponse intercept(Context ctx, WebResourceRequest req) { return intercept(ctx, req, false); }
+
+    /**
+     * For WebViews: answer GET /auth/user from the copy. With no copy yet, the hidden log-in page
+     * (stubIfEmpty) gets an empty answer - it only needs the new login, which it already has by then.
+     */
+    static WebResourceResponse intercept(Context ctx, WebResourceRequest req, boolean stubIfEmpty) {
         if (!isUserUrl(req.getUrl().toString())) return null;
         Context app = ctx.getApplicationContext();
         String origin = header(req, "Origin");
@@ -84,6 +103,7 @@ final class UserShield {
         String jwt = auth != null && auth.regionMatches(true, 0, "Bearer ", 0, 7) ? auth.substring(7).trim() : null;
         if (jwt == null || !Store.tokenFresh(jwt, 30)) return resp(401, "{\"statusCode\":401,\"message\":\"Unauthorized\"}", h);
         String body = cached(app);
+        if (body == null && stubIfEmpty) return resp(200, "{}", h);
         if (body == null) {
             // first time only: the real request, kept for next time
             body = fetch(req.getUrl().toString(), auth, origin);

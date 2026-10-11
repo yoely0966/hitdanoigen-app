@@ -133,7 +133,7 @@ public final class Auth {
 
         wv.setWebViewClient(new WebViewClient() {
             @Override public android.webkit.WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest req) {
-                return UserShield.intercept(v.getContext(), req); // never let the site read the profile (it marks the chart)
+                return UserShield.intercept(v.getContext(), req, true); // never let the site read the profile (it marks the chart)
             }
 
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest req) {

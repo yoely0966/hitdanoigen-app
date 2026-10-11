@@ -54,7 +54,11 @@ public final class Api {
 
         // the profile is read once and then kept: reading it makes the site mark the day on the chart
         boolean profile = "GET".equals(method) && UserShield.isUserUrl(url);
-        if (profile && UserShield.cached(app) != null) return new Resp(200, UserShield.cached(app));
+        if (profile) {
+            // never a real read from here (it would mark the day); the copy is made after the user updates
+            String c = UserShield.cached(app);
+            return c != null ? new Resp(200, c) : new Resp(404, "{\"error\":\"no profile copy yet\"}");
+        }
         if (api && mayRefresh && !Store.tokenFresh(Store.token(app), 60)) Auth.refreshBlocking(app);
         Resp r = raw(app, method, url, body, contentType);
         if (profile && r.ok() && r.body != null) UserShield.save(app, r.body);
